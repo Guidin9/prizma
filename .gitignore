@@ -1,0 +1,18 @@
+# build output
+node_modules/
+build/
+.svelte-kit/
+src-tauri/target/
+src-tauri/gen/
+
+# never commit keyboard firmware, dumps or vendor files
+*.hex
+*.bin
+firmware/
+dumps/
+vendor/
+
+# local
+.env
+*.log
+.DS_Store

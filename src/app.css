@@ -1,0 +1,73 @@
+@import '@fontsource-variable/unbounded';
+@import '@fontsource-variable/manrope';
+
+:root {
+  /* obsidian violet: the room the keyboard glows in */
+  --ink: #0e0c18;
+  --surface: #171427;
+  --raised: #211d36;
+  --line: #2e2948;
+  --line-strong: #463e6c;
+  --text: #ece8f7;
+  --muted: #9a93b8;
+  --faint: #6c6590;
+  --danger: #ff6b8b;
+  --ok: #7dffc1;
+
+  /* the spectrum is the accent; it only appears where something is selected or applied */
+  --spectrum: linear-gradient(90deg, #ff3d6e, #ff9d2e, #ffe14d, #4dff91, #3dd6ff, #6b5cff, #d24dff);
+
+  --font-display: 'Unbounded Variable', 'Segoe UI', sans-serif;
+  --font-ui: 'Manrope Variable', 'Segoe UI', sans-serif;
+
+  --r-key: 7px;
+  --r-panel: 14px;
+  --r-pill: 999px;
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+  --s7: 48px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+  user-select: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid #3dd6ff;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
