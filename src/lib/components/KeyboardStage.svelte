@@ -12,14 +12,23 @@
     pulse: number;
     /** live colours from the software engine (layout order); overrides the preview */
     colours?: Rgb[] | null;
+    /** key ids to outline (the selected layer's keys); null = no outline */
+    mask?: string[] | null;
+    /** when set, clicking and dragging over keys paints them: (key id, add or remove) */
+    onpaint?: ((id: string, add: boolean) => void) | null;
   }
-  let { keys, bounds, fx, lock, pulse, colours = null }: Props = $props();
+  let { keys, bounds, fx, lock, pulse, colours = null, mask = null, onpaint = null }: Props = $props();
 
   let host: HTMLDivElement;
   let canvas: HTMLCanvasElement;
+  // the LEDs' light is drawn small and blurred there: a quarter of the pixels, same soft glow
+  const LIGHT_SCALE = 0.25;
   const light = document.createElement('canvas');
+  const glow = document.createElement('canvas');
   let pulseStart = -1;
   let lastPulse = 0;
+  // stage geometry of the last frame, for hit-testing clicks
+  let view = { s: 1, ox: 0, oy: 0 };
 
   $effect(() => {
     if (pulse !== lastPulse) {
@@ -33,13 +42,42 @@
     ctx.roundRect(x, y, w, h, r);
   }
 
+  function keyAt(ev: PointerEvent): KeyGeo | null {
+    const r = canvas.getBoundingClientRect();
+    const lx = bounds[0] + (ev.clientX - r.left - view.ox) / view.s;
+    const ly = bounds[1] + (ev.clientY - r.top - view.oy) / view.s;
+    return keys.find((k) => k.rects.some(([a, b, c, d]) => lx >= a && lx <= c && ly >= b && ly <= d)) ?? null;
+  }
+
+  // one stroke adds or removes, decided by the first key it touches
+  let stroke: { add: boolean; done: Set<string> } | null = null;
+  function down(ev: PointerEvent) {
+    if (!onpaint) return;
+    const k = keyAt(ev);
+    if (!k) return;
+    canvas.setPointerCapture(ev.pointerId);
+    stroke = { add: !(mask ?? []).includes(k.id), done: new Set([k.id]) };
+    onpaint(k.id, stroke.add);
+  }
+  function move(ev: PointerEvent) {
+    if (!onpaint || !stroke) return;
+    const k = keyAt(ev);
+    if (k && !stroke.done.has(k.id)) {
+      stroke.done.add(k.id);
+      onpaint(k.id, stroke.add);
+    }
+  }
+  const up = () => (stroke = null);
+
   onMount(() => {
     const ctx = canvas.getContext('2d')!;
     const lctx = light.getContext('2d')!;
+    const gctx = glow.getContext('2d')!;
     let raf = 0;
     let W = 0;
     let H = 0;
     let dpr = 1;
+    let last = 0;
 
     const resize = () => {
       dpr = window.devicePixelRatio || 1;
@@ -47,8 +85,9 @@
       H = host.clientHeight;
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
-      light.width = canvas.width;
-      light.height = canvas.height;
+      light.width = glow.width = Math.max(1, Math.round(canvas.width * LIGHT_SCALE));
+      light.height = glow.height = Math.max(1, Math.round(canvas.height * LIGHT_SCALE));
+      last = 0;
     };
     const ro = new ResizeObserver(resize);
     ro.observe(host);
@@ -56,7 +95,9 @@
 
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
-      if (document.hidden || W === 0) return;
+      // 30 fps is plenty for a preview and halves the drawing work
+      if (document.hidden || W === 0 || now - last < 32) return;
+      last = now;
       const t = now / 1000;
       const [x0, y0, x1, y1] = bounds;
       const bw = x1 - x0;
@@ -64,6 +105,7 @@
       const s = Math.min((W * 0.86) / bw, (H * 0.62) / bh);
       const ox = (W - bw * s) / 2;
       const oy = H * 0.12;
+      view = { s, ox, oy };
       const px = (x: number) => (ox + (x - x0) * s) * dpr;
       const py = (y: number) => (oy + (y - y0) * s) * dpr;
       const ps = s * dpr;
@@ -72,7 +114,7 @@
       const live = colours;
       const presses = live ? [] : simPresses(keys, t);
       const keyColours: Rgb[] = keys.map((k, i) => {
-        let c: Rgb = live && live[i] ? [...live[i]] as Rgb : shade(fx, k, t, presses);
+        let c: Rgb = live && live[i] ? ([...live[i]] as Rgb) : shade(fx, k, t, presses);
         if (lock && k.name === 'Fn') c = [255, 255, 255];
         if (pulseP < 1) {
           const front = 1.15 - pulseP * 1.3;
@@ -82,29 +124,32 @@
         return c;
       });
 
-      // light layer: what the LEDs emit, used for glow and the desk reflection
-      lctx.clearRect(0, 0, light.width, light.height);
+      // light layer (what the LEDs emit), small; blurred once into `glow`
+      lctx.setTransform(LIGHT_SCALE, 0, 0, LIGHT_SCALE, 0, 0);
+      lctx.clearRect(0, 0, canvas.width, canvas.height);
       keys.forEach((k, i) => {
         const [r, g, b] = keyColours[i];
         lctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
         for (const [a, bb, c, d] of k.rects) lctx.fillRect(px(a), py(bb), (c - a) * ps, (d - bb) * ps);
       });
+      gctx.clearRect(0, 0, glow.width, glow.height);
+      gctx.filter = `blur(${4.5 * dpr}px)`;
+      gctx.drawImage(light, 0, 0);
+      gctx.filter = 'none';
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.imageSmoothingEnabled = true;
       // desk reflection
       ctx.save();
       ctx.globalAlpha = 0.28;
-      ctx.filter = `blur(${26 * dpr}px)`;
       ctx.translate(0, py(y1) * 2 + 14 * dpr);
       ctx.scale(1, -1);
-      ctx.drawImage(light, 0, 0);
+      ctx.drawImage(glow, 0, 0, canvas.width, canvas.height);
       ctx.restore();
       // glow halo
-      ctx.save();
       ctx.globalAlpha = 0.85;
-      ctx.filter = `blur(${18 * dpr}px)`;
-      ctx.drawImage(light, 0, 0);
-      ctx.restore();
+      ctx.drawImage(glow, 0, 0, canvas.width, canvas.height);
+      ctx.globalAlpha = 1;
 
       // plate
       const pad = 9 * ps;
@@ -120,6 +165,7 @@
       ctx.font = `600 ${fontPx}px 'Manrope Variable', sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      const masked = mask ? new Set(mask) : null;
       keys.forEach((k, i) => {
         const [r, g, b] = keyColours[i];
         const lum = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
@@ -141,8 +187,16 @@
           roundRect(ctx, x + 3 * dpr, y + h - 3.2 * dpr, w - 6 * dpr, 1.6 * dpr, dpr);
           ctx.fill();
           ctx.strokeStyle = '#ffffff10';
+          ctx.lineWidth = dpr;
           roundRect(ctx, x + 0.5 * dpr, y + 0.5 * dpr, w - dpr, h - dpr, 6 * dpr);
           ctx.stroke();
+          if (masked?.has(k.id)) {
+            // the selected layer covers this key
+            ctx.strokeStyle = '#ffffffd9';
+            ctx.lineWidth = 2 * dpr;
+            roundRect(ctx, x - 2 * dpr, y - 2 * dpr, w + 4 * dpr, h + 4 * dpr, 8 * dpr);
+            ctx.stroke();
+          }
         }
         const r0 = k.rects[0];
         const lx = px((r0[0] + r0[2]) / 2);
@@ -160,8 +214,8 @@
   });
 </script>
 
-<div class="stage" bind:this={host}>
-  <canvas bind:this={canvas}></canvas>
+<div class="stage" class:painting={!!onpaint} bind:this={host}>
+  <canvas bind:this={canvas} onpointerdown={down} onpointermove={move} onpointerup={up} onpointercancel={up}></canvas>
 </div>
 
 <style>
@@ -176,5 +230,9 @@
     inset: 0;
     width: 100%;
     height: 100%;
+    touch-action: none;
+  }
+  .painting canvas {
+    cursor: crosshair;
   }
 </style>

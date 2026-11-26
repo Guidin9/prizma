@@ -3,6 +3,8 @@
   import type { EffectInfo, HwEffect } from '../api';
   import { REACTIVE, hash, shade, simPresses, type KeyGeo } from '../preview';
   import KeyPressIcon from './KeyPressIcon.svelte';
+  import { t } from '../i18n.svelte';
+  import { hwName } from '../swcatalog';
 
   interface Props {
     info: EffectInfo;
@@ -11,7 +13,7 @@
     applied: boolean;
     onpick: () => void;
   }
-  let { info, effect, selected, applied, onpick }: Props = $props();
+  let { info, effect: fx, selected, applied, onpick }: Props = $props();
 
   const COLS = 7;
   const ROWS = 3;
@@ -20,6 +22,7 @@
     for (let c = 0; c < COLS; c++)
       cells.push({
         index: r * COLS + c,
+        id: '',
         name: '',
         leds: [],
         rects: [],
@@ -31,6 +34,8 @@
   let canvas: HTMLCanvasElement;
   let hovered = $state(false);
 
+  let paint: ((t: number) => void) | null = $state.raw(null);
+
   onMount(() => {
     const ctx = canvas.getContext('2d')!;
     const dpr = window.devicePixelRatio || 1;
@@ -38,23 +43,11 @@
     const H = canvas.clientHeight;
     canvas.width = W * dpr;
     canvas.height = H * dpr;
-    let raf = 0;
     const cw = (W * dpr) / (COLS + 0.6);
     const ch = (H * dpr) / ROWS;
-    let lastStatic = '';
-    const draw = (now: number) => {
-      raf = requestAnimationFrame(draw);
-      const live = hovered || selected;
-      if (!live) {
-        const key = JSON.stringify(effect.colour) + effect.reverse;
-        if (key === lastStatic) return; // static thumbnail already drawn
-        lastStatic = key;
-      } else {
-        lastStatic = '';
-      }
-      const t = live ? now / 1000 : 1.7;
+    paint = (t: number) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      const e = { ...effect, id: info.id, brightness: 4 };
+      const e = { ...fx, id: info.id, brightness: 4 };
       const presses = simPresses(cells, t, 0.35);
       for (const k of cells) {
         const [r, g, b] = shade(e, k, t, presses);
@@ -70,7 +63,28 @@
         ctx.fill();
       }
     };
-    raf = requestAnimationFrame(draw);
+    return () => (paint = null);
+  });
+
+  // Only the hovered or selected tile animates; the others are drawn once (a page full of
+  // animation loops keeps the web view busy even when nothing changes).
+  $effect(() => {
+    const live = hovered || selected;
+    void fx.colour, fx.speed, fx.reverse; // redraw when the stored settings change
+    if (!paint) return;
+    if (!live) {
+      paint(1.7);
+      return;
+    }
+    let raf = 0;
+    let last = 0;
+    const loop = (now: number) => {
+      raf = requestAnimationFrame(loop);
+      if (now - last < 32) return;
+      last = now;
+      paint?.(now / 1000);
+    };
+    raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   });
 </script>
@@ -78,7 +92,7 @@
 <button
   class="tile"
   class:selected
-  aria-label={REACTIVE.has(info.id) ? `${info.name}, tuşa basınca çalışır` : undefined}
+  aria-label={REACTIVE.has(info.id) ? t('tile.pressAria', { name: hwName(info) }) : undefined}
   aria-pressed={selected}
   onclick={onpick}
   onmouseenter={() => (hovered = true)}
@@ -88,12 +102,12 @@
 >
   <canvas bind:this={canvas}></canvas>
   {#if REACTIVE.has(info.id)}
-    <span class="press" title="Tuşa basınca çalışır; basmazsan klavye karanlık kalır.">
-      <KeyPressIcon size={12} />Tuşa basınca
+    <span class="press" title={t('tile.pressHint')}>
+      <KeyPressIcon size={12} />{t('tile.press')}
     </span>
   {/if}
-  <span class="name">{info.name}</span>
-  {#if applied}<span class="dot" title="Klavyede şu an bu efekt var"></span>{/if}
+  <span class="name">{hwName(info)}</span>
+  {#if applied}<span class="dot" title={t('tile.current')}></span>{/if}
 </button>
 
 <style>

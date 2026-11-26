@@ -38,6 +38,28 @@ export interface SwEffect {
   scale: number;
 }
 
+/** How a layer combines with the layers below it. */
+export type Blend = 'normal' | 'add' | 'max';
+
+export interface Layer {
+  effect: SwEffect;
+  opacity: number; // 0..1
+  blend: Blend;
+  /** key ids (LayoutKey.ansi) the layer covers; empty = whole keyboard */
+  keys: string[];
+  visible: boolean;
+}
+
+/** Layers bottom first. */
+export interface Scene {
+  layers: Layer[];
+}
+
+export interface SavedScene {
+  name: string;
+  scene: Scene;
+}
+
 export interface KbdEvent {
   kind: 'fn_down' | 'fn_up' | 'lock_toggle' | 'effect_key' | 'brightness_key' | 'speed_key' | 'other';
   raw: number[];
@@ -50,9 +72,13 @@ export const api = {
   applyEffect: (effect: HwEffect) => invoke<HwEffect>('apply_effect', { effect }),
   setLayout: (id: string) => invoke<void>('set_layout', { id }),
   setVisible: (visible: boolean) => invoke<void>('set_visible', { visible }),
-  enginePreview: (effect: SwEffect | null) => invoke<void>('engine_preview', { effect }),
-  engineStart: (effect: SwEffect) => invoke<void>('engine_start', { effect }),
+  enginePreview: (scene: Scene | null) => invoke<void>('engine_preview', { scene }),
+  engineStart: (scene: Scene) => invoke<void>('engine_start', { scene }),
   engineStop: () => invoke<HwEffect>('engine_stop'),
+  scenes: () => invoke<SavedScene[]>('scenes_list'),
+  setLanguage: (lang: 'tr' | 'en') => invoke<void>('set_language', { lang }),
+  saveScene: (name: string, scene: Scene) => invoke<SavedScene[]>('scene_save', { name, scene }),
+  deleteScene: (name: string) => invoke<SavedScene[]>('scene_delete', { name }),
 };
 
 export function onEngineFrame(cb: (keys: Rgb[]) => void): Promise<UnlistenFn> {

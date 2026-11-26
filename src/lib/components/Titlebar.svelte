@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getCurrentWindow } from '@tauri-apps/api/window';
+  import { t } from '../i18n.svelte';
 
   interface Props {
     connected: boolean;
@@ -17,23 +18,23 @@
 
   <div class="device" data-tauri-drag-region>
     <span class="chip" class:off={!connected}>
-      <span class="led"></span>{connected ? 'K617 bağlı' : 'Klavye bulunamadı'}
+      <span class="led"></span>{connected ? t('bar.connected') : t('bar.notFound')}
     </span>
     {#if connected && lock !== null}
-      <span class="chip lock" class:on={lock} title="Fn'e iki kez bas ya da Fn + Caps Lock">
-        <span class="key">Fn</span>{lock ? 'Kilit açık' : 'Kilit kapalı'}
+      <span class="chip lock" class:on={lock} title={t('bar.lockHint')}>
+        <span class="key">Fn</span>{lock ? t('bar.lockOn') : t('bar.lockOff')}
       </span>
     {/if}
   </div>
 
   <div class="controls">
-    <button aria-label="Küçült" onclick={() => win.minimize()}>
+    <button aria-label={t('bar.minimize')} onclick={() => win.minimize()}>
       <svg viewBox="0 0 10 10"><path d="M1 5h8" /></svg>
     </button>
-    <button aria-label="Büyüt" onclick={() => win.toggleMaximize()}>
+    <button aria-label={t('bar.maximize')} onclick={() => win.toggleMaximize()}>
       <svg viewBox="0 0 10 10"><rect x="1.5" y="1.5" width="7" height="7" rx="1" /></svg>
     </button>
-    <button class="close" aria-label="Tepsiye küçült" title="Prizma tepside çalışmaya devam eder" onclick={() => win.close()}>
+    <button class="close" aria-label={t('bar.toTray')} title={t('bar.toTrayHint')} onclick={() => win.close()}>
       <svg viewBox="0 0 10 10"><path d="M2 2l6 6M8 2l-6 6" /></svg>
     </button>
   </div>

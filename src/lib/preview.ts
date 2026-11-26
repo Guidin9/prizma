@@ -1,9 +1,12 @@
 // Approximate on-screen previews of the firmware effects. The keyboard renders its own
 // animation; these only show the character of each effect on the stage.
 import type { HwEffect, Layout, Rgb } from './api';
+import type { L } from './i18n.svelte';
 
 export interface KeyGeo {
   index: number;
+  /** stable key id (LayoutKey.ansi), used by layer key masks */
+  id: string;
   name: string;
   leds: number[];
   rects: [number, number, number, number][];
@@ -25,6 +28,7 @@ export function geometry(layout: Layout): { keys: KeyGeo[]; bounds: [number, num
     const ry1 = Math.max(...k.rects.map((r) => r[3]));
     return {
       index,
+      id: k.ansi,
       name: k.name,
       leds: k.leds,
       rects: k.rects,
@@ -265,26 +269,26 @@ export function shade(e: HwEffect, k: KeyGeo, t: number, presses: Press[] = []):
 }
 
 /** What each firmware effect looks like on the keyboard (checked with a camera, multicolour mode). */
-export const DESCRIPTIONS: Record<number, string> = {
-  0x01: 'Bütün tuşlar sabit yanar. Çok renkte klavye boyunca duran bir gökkuşağı olur.',
-  0x02: 'Bütün klavye nefes alır gibi yanıp söner; çok renkte her nefeste renk değişir.',
-  0x03: 'Bütün klavye aynı anda yavaşça renkten renge geçer.',
-  0x04: 'Tuşa basınca o tuşun bütün satırı yanar ve söner. Basmazsan klavye karanlık kalır.',
-  0x05: 'Rastgele tuşlar tek tek, her biri kendi renginde yanıp söner.',
-  0x06: 'Renkler klavyenin ortası etrafında döner.',
-  0x07: 'Bastığın tuştan bütün klavyeye halka halka ışık yayılır. Basmazsan karanlık kalır.',
-  0x08: 'Rastgele tuşlar yıldız gibi pırıldar.',
-  0x09: 'Her tuş kendi renginde yanar, renkler yavaşça kayar.',
-  0x0a: 'Kısa, renkli bir ışık yılanı satırlar boyunca hızla koşar.',
-  0x0b: 'Geniş bir gökkuşağı bütün klavyede yana doğru akar.',
-  0x0c: 'Yalnızca bastığın tuş yanar, sonra söner. Basmazsan karanlık kalır.',
-  0x0d: 'İnce bir ışık çizgisi dalga gibi kıvrılarak ilerler.',
-  0x0e: 'Geniş bir ışık şeridi sağa sola tarar, rengi değişir.',
-  0x0f: 'Renkli dilimler yel değirmeni gibi ortada döner.',
-  0x10: 'Her satır ayrı renkte; renkler şelale gibi aşağı akar.',
-  0x11: 'Renk halkaları ortadan açılıp bütün klavyeyi doldurur.',
-  0x12: 'Dağınık ışıklar ortadan dışarı patlar, sonra söner.',
-  0x13: 'İki renkli ışık grubu yanlardan gelip ortada çarpışır.',
-  0x14: 'Bastığın tuş ve çevresi artı şeklinde yanar. Basmazsan karanlık kalır.',
-  0x16: 'Arka ışık kapanır.',
+export const DESCRIPTIONS: Record<number, L> = {
+  0x01: { tr: 'Bütün tuşlar sabit yanar. Çok renkte klavye boyunca duran bir gökkuşağı olur.', en: 'Every key glows steadily. In multicolour it is a still rainbow across the board.' },
+  0x02: { tr: 'Bütün klavye nefes alır gibi yanıp söner; çok renkte her nefeste renk değişir.', en: 'The whole board fades in and out like breathing; in multicolour the colour moves on with every breath.' },
+  0x03: { tr: 'Bütün klavye aynı anda yavaşça renkten renge geçer.', en: 'The whole board drifts slowly from colour to colour, all keys together.' },
+  0x04: { tr: 'Tuşa basınca o tuşun bütün satırı yanar ve söner. Basmazsan klavye karanlık kalır.', en: 'Pressing a key lights up its whole row, which then fades. Dark until you press a key.' },
+  0x05: { tr: 'Rastgele tuşlar tek tek, her biri kendi renginde yanıp söner.', en: 'Random single keys flash, each in its own colour.' },
+  0x06: { tr: 'Renkler klavyenin ortası etrafında döner.', en: 'Colours turn around the middle of the board.' },
+  0x07: { tr: 'Bastığın tuştan bütün klavyeye halka halka ışık yayılır. Basmazsan karanlık kalır.', en: 'Rings of light spread across the board from the key you press. Dark until you press a key.' },
+  0x08: { tr: 'Rastgele tuşlar yıldız gibi pırıldar.', en: 'Random keys twinkle like stars.' },
+  0x09: { tr: 'Her tuş kendi renginde yanar, renkler yavaşça kayar.', en: 'Every key glows in its own colour; the colours drift slowly.' },
+  0x0a: { tr: 'Kısa, renkli bir ışık yılanı satırlar boyunca hızla koşar.', en: 'A short, colourful snake of light races along the rows.' },
+  0x0b: { tr: 'Geniş bir gökkuşağı bütün klavyede yana doğru akar.', en: 'A wide rainbow flows sideways across the whole board.' },
+  0x0c: { tr: 'Yalnızca bastığın tuş yanar, sonra söner. Basmazsan karanlık kalır.', en: 'Only the key you press lights up, then fades. Dark until you press a key.' },
+  0x0d: { tr: 'İnce bir ışık çizgisi dalga gibi kıvrılarak ilerler.', en: 'A thin line of light weaves across the board like a wave.' },
+  0x0e: { tr: 'Geniş bir ışık şeridi sağa sola tarar, rengi değişir.', en: 'A wide bar of light sweeps left and right, changing colour.' },
+  0x0f: { tr: 'Renkli dilimler yel değirmeni gibi ortada döner.', en: 'Coloured slices spin around the middle like a windmill.' },
+  0x10: { tr: 'Her satır ayrı renkte; renkler şelale gibi aşağı akar.', en: 'Each row has its own colour and the colours pour down like a waterfall.' },
+  0x11: { tr: 'Renk halkaları ortadan açılıp bütün klavyeyi doldurur.', en: 'Rings of colour open out from the middle and fill the board.' },
+  0x12: { tr: 'Dağınık ışıklar ortadan dışarı patlar, sonra söner.', en: 'Scattered lights burst out from the middle, then fade.' },
+  0x13: { tr: 'İki renkli ışık grubu yanlardan gelip ortada çarpışır.', en: 'Two colourful groups of light run in from the sides and collide in the middle.' },
+  0x14: { tr: 'Bastığın tuş ve çevresi artı şeklinde yanar. Basmazsan karanlık kalır.', en: 'The key you press and its neighbours light up in a small cross. Dark until you press a key.' },
+  0x16: { tr: 'Arka ışık kapanır.', en: 'The backlight is off.' },
 };

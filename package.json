@@ -1,6 +1,6 @@
 {
   "name": "prizma",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Redragon K617 Fizz ışık ve tuş stüdyosu",
   "type": "module",
   "scripts": {

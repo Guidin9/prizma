@@ -1,0 +1,18 @@
+# Prizma
+
+> Prizma is a free, open-source Windows app (GPL-3.0) that controls the RGB lighting of the Redragon K617 Fizz keyboard (USB 258A:0049, SinoWealth SH68F90A). It is an alternative to the official Redragon K617 software: it sets the keyboard's 20 built-in effects (colour, speed, brightness, direction; saved on the keyboard) and adds live per-key effects the official app lacks: music visualizer (spectrum, bass, VU via WASAPI loopback), screen colour sync (Ambilight-style), reactive typing effects, and a layer editor with per-key masks, blend modes and saved scenes. It corrects colours for the K617's LEDs (gamma 2.2 and reduced blue) so yellow no longer looks white. English and Turkish UI. Runs in the tray at about 6 MB RAM. Never writes firmware.
+
+Key facts:
+- Platform: Windows 10/11, 64-bit. Installer: Prizma_x.y.z_x64-setup.exe or .msi from GitHub Releases.
+- Tested keyboard: Redragon K617 Fizz (wired), Turkish Q ISO layout; US ANSI layout included but not hardware-tested. Other Redragon models are not supported.
+- Some built-in effects (Flash away, Ripples shining, Reaction, Perfect) only light up when keys are pressed.
+- Close the official Redragon software while using Prizma.
+- Privacy: no network access, no telemetry; the keyboard hook used by reactive effects only maps key positions and stores nothing.
+- Built with Rust (Tauri 2) and SvelteKit.
+
+## Docs
+
+- [README (English)](https://github.com/Guidin9/prizma/blob/main/README.md): features, install, compatibility, FAQ, privacy
+- [README (Türkçe)](https://github.com/Guidin9/prizma/blob/main/README.tr.md): Turkish documentation
+- [Latest release](https://github.com/Guidin9/prizma/releases/latest): Windows installer downloads and release notes
+- [License](https://github.com/Guidin9/prizma/blob/main/LICENSE): GPL-3.0-or-later

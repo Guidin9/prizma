@@ -81,7 +81,7 @@ pub fn apply_effect(dev: &K617, e: &HwEffect) -> Result<()> {
             return Ok(());
         }
     }
-    Err(anyhow!("klavye ayarı kabul etmedi (geri okumada efekt değişmemiş)"))
+    Err(anyhow!("the keyboard did not accept the setting (unchanged when read back)"))
 }
 
 /// Active keymap profile (0 = normal, 1 = Fn lock) as last saved by the firmware.

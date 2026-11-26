@@ -3,6 +3,8 @@
   import { sameEffect } from '../api';
   import { DESCRIPTIONS, REACTIVE } from '../preview';
   import KeyPressIcon from './KeyPressIcon.svelte';
+  import { t, tx } from '../i18n.svelte';
+  import { hwName } from '../swcatalog';
 
   interface Props {
     info: EffectInfo;
@@ -36,29 +38,29 @@
 
 <aside class="inspector">
   <header>
-    <h2>{info.name}</h2>
-    <p class="desc">{DESCRIPTIONS[info.id] ?? ''}</p>
+    <h2>{hwName(info)}</h2>
+    <p class="desc">{DESCRIPTIONS[info.id] ? tx(DESCRIPTIONS[info.id]) : ''}</p>
     {#if REACTIVE.has(info.id)}
       <div class="reactive" role="note">
         <span class="ricon"><KeyPressIcon size={18} /></span>
         <div>
-          <strong>Tuşa basınca çalışır</strong>
-          <p>Klavye sen bir tuşa basana kadar karanlık kalır; bu bir arıza değil. Ön izlemede sanal tuş basışları gösteriliyor.</p>
+          <strong>{t('insp.reactiveTitle')}</strong>
+          <p>{t('insp.reactiveText')}</p>
         </div>
       </div>
     {/if}
-    <p class="approx">Ekrandaki ön izleme yaklaşık; asıl görünüm klavyede. Her efekt kendi rengini ve hızını hatırlar.</p>
+    <p class="approx">{t('insp.approx')}</p>
   </header>
 
   {#if info.colour}
     <section>
-      <h3>Renk</h3>
-      <div class="mode" role="radiogroup" aria-label="Renk modu">
+      <h3>{t('insp.colour')}</h3>
+      <div class="mode" role="radiogroup" aria-label={t('insp.colourMode')}>
         <button role="radio" aria-checked={draft.colour === null} class:on={draft.colour === null} onclick={() => set({ colour: null })}>
-          <span class="rainbow"></span>Çok renkli
+          <span class="rainbow"></span>{t('insp.multi')}
         </button>
         <button role="radio" aria-checked={draft.colour !== null} class:on={draft.colour !== null} onclick={() => set({ colour: draft.colour ?? [61, 214, 255] })}>
-          <span class="solid" style:background={draft.colour ? hex(draft.colour) : '#3dd6ff'}></span>Tek renk
+          <span class="solid" style:background={draft.colour ? hex(draft.colour) : '#3dd6ff'}></span>{t('insp.single')}
         </button>
       </div>
       {#if draft.colour}
@@ -72,7 +74,7 @@
               onclick={() => set({ colour: c })}
             ></button>
           {/each}
-          <label class="sw custom" title="Kendi rengini seç">
+          <label class="sw custom" title={t('insp.ownColour')}>
             <input type="color" value={hex(draft.colour)} oninput={(e) => set({ colour: fromHex((e.target as HTMLInputElement).value) })} />
           </label>
         </div>
@@ -82,8 +84,8 @@
 
   {#if info.animated}
     <section>
-      <h3>Hız</h3>
-      <div class="steps" role="radiogroup" aria-label="Hız">
+      <h3>{t('insp.speed')}</h3>
+      <div class="steps" role="radiogroup" aria-label={t('insp.speed')}>
         {#each [1, 2, 3, 4, 5] as v}
           <button role="radio" aria-checked={draft.speed === v} class:on={draft.speed >= v} onclick={() => set({ speed: v })}>{v}</button>
         {/each}
@@ -93,8 +95,8 @@
 
   {#if info.id !== 0x16}
     <section>
-      <h3>Parlaklık</h3>
-      <div class="steps" role="radiogroup" aria-label="Parlaklık">
+      <h3>{t('insp.brightness')}</h3>
+      <div class="steps" role="radiogroup" aria-label={t('insp.brightness')}>
         {#each [0, 1, 2, 3, 4] as v}
           <button role="radio" aria-checked={draft.brightness === v} class:on={draft.brightness >= v} onclick={() => set({ brightness: v })}>{v + 1}</button>
         {/each}
@@ -104,22 +106,22 @@
 
   {#if info.animated}
     <section class="row">
-      <h3>Ters yön</h3>
-      <button class="switch" role="switch" aria-checked={draft.reverse} aria-label="Ters yön" class:on={draft.reverse} onclick={() => set({ reverse: !draft.reverse })}>
+      <h3>{t('insp.reverse')}</h3>
+      <button class="switch" role="switch" aria-checked={draft.reverse} aria-label={t('insp.reverse')} class:on={draft.reverse} onclick={() => set({ reverse: !draft.reverse })}>
         <span></span>
       </button>
     </section>
   {/if}
 
   <footer>
-    <p class="note">Ayar iki profile birden yazılır; Fn kilidini açıp kapatmak ışığı değiştirmez.</p>
+    <p class="note">{t('insp.note')}</p>
     {#if message}<p class="message" class:failed role="status">{message}</p>{/if}
     <div class="actions">
       <button class="primary" disabled={!connected || busy || !dirty} onclick={onapply}>
-        {busy ? 'Uygulanıyor…' : dirty ? 'Klavyeye uygula' : 'Klavyede bu var'}
+        {busy ? t('insp.applying') : dirty ? t('insp.apply') : t('insp.onKeyboard')}
       </button>
       {#if dirty && applied}
-        <button class="ghost" onclick={onrevert} disabled={busy}>Değişiklikleri geri al</button>
+        <button class="ghost" onclick={onrevert} disabled={busy}>{t('insp.revert')}</button>
       {/if}
     </div>
   </footer>

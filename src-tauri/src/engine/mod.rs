@@ -6,10 +6,12 @@
 pub mod audio;
 pub mod effects;
 pub mod input;
+pub mod layers;
 pub mod screen;
 
 use crate::layout::Layout;
-use effects::{AudioLevels, Inputs, ScreenGrid, State, SwEffect};
+use effects::{AudioLevels, Inputs, ScreenGrid};
+use layers::{Scene, SceneState};
 use parking_lot::Mutex;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -26,7 +28,7 @@ pub enum Mode {
 }
 
 pub struct Shared {
-    pub effect: Option<SwEffect>,
+    pub scene: Option<Scene>,
     pub mode: Mode,
     pub layout: Arc<Layout>,
     pub lock: bool,
@@ -52,7 +54,7 @@ impl Engine {
     pub fn new(layout: Layout) -> Arc<Self> {
         let e = Arc::new(Self {
             shared: Arc::new(Mutex::new(Shared {
-                effect: None,
+                scene: None,
                 mode: Mode::Off,
                 layout: Arc::new(layout),
                 lock: false,
@@ -94,10 +96,12 @@ impl Engine {
         }
     }
 
-    fn ensure_inputs(self: &Arc<Self>, kind: &str) {
-        self.audio_on.store(effects::AUDIO.contains(&kind), Ordering::Relaxed);
-        self.screen_on.store(effects::SCREEN.contains(&kind), Ordering::Relaxed);
-        if effects::REACTIVE.contains(&kind) && !self.hook_started.swap(true, Ordering::Relaxed) {
+    /// Run only the inputs the visible layers need (audio capture and screen capture cost CPU).
+    fn ensure_inputs(self: &Arc<Self>, scene: &Scene) {
+        let any = |list: &[&str]| scene.kinds().any(|k| list.contains(&k));
+        self.audio_on.store(any(effects::AUDIO), Ordering::Relaxed);
+        self.screen_on.store(any(effects::SCREEN), Ordering::Relaxed);
+        if any(effects::REACTIVE) && !self.hook_started.swap(true, Ordering::Relaxed) {
             let me = self.clone();
             input::start(move |sc| me.press_scancode(sc));
         }
@@ -107,39 +111,37 @@ impl Engine {
         let me = self.clone();
         thread::spawn(move || {
             let t0 = Instant::now();
-            let mut st = State::default();
+            let mut st = SceneState::default();
             let mut out: Vec<effects::Rgb> = Vec::new();
             let mut frame = [0u8; 382];
             frame[..4].copy_from_slice(&[0x08, 0x0A, 0x7A, 0x01]);
             let mut n: u64 = 0;
             let mut timer_period = false;
             loop {
-                let (effect, mode, layout, lock, visible, presses) = {
+                let (scene, mode, layout, lock, visible, presses) = {
                     let mut s = me.shared.lock();
-                    (s.effect.clone(), s.mode, s.layout.clone(), s.lock, s.visible, std::mem::take(&mut s.presses))
+                    (s.scene.clone(), s.mode, s.layout.clone(), s.lock, s.visible, std::mem::take(&mut s.presses))
                 };
                 let live = mode == Mode::Live;
                 if live != timer_period {
                     timer::set(live);
                     timer_period = live;
                 }
-                let Some(effect) = effect.filter(|_| mode != Mode::Off) else {
+                let idle = mode == Mode::Off || (mode == Mode::Preview && !visible);
+                let Some(scene) = scene.filter(|_| !idle) else {
+                    // nothing to draw: stop capturing sound and screen too
                     me.audio_on.store(false, Ordering::Relaxed);
                     me.screen_on.store(false, Ordering::Relaxed);
-                    thread::sleep(Duration::from_millis(100));
+                    thread::sleep(Duration::from_millis(120));
                     continue;
                 };
-                if mode == Mode::Preview && !visible {
-                    thread::sleep(Duration::from_millis(150));
-                    continue;
-                }
-                me.ensure_inputs(&effect.kind);
+                me.ensure_inputs(&scene);
                 let start = Instant::now();
                 let t = t0.elapsed().as_secs_f32();
                 let pressed: Vec<(usize, f32)> = presses.into_iter().map(|i| (i, t)).collect();
                 let audio = me.audio.lock().clone();
                 let screen = me.screen.lock().clone();
-                effects::render(&effect, &layout, t, &Inputs { presses: &pressed, audio: &audio, screen: &screen }, &mut st, &mut out);
+                layers::render(&scene, &layout, t, &Inputs { presses: &pressed, audio: &audio, screen: &screen }, &mut st, &mut out);
                 let mut keys: Vec<[u8; 3]> = out.iter().map(|c| [c[0].clamp(0.0, 255.0) as u8, c[1].clamp(0.0, 255.0) as u8, c[2].clamp(0.0, 255.0) as u8]).collect();
                 if lock {
                     if let Some(i) = layout.keys.iter().position(|k| k.ansi == "Fn") {
@@ -159,7 +161,7 @@ impl Engine {
                     }
                     if let Err(e) = send(&frame) {
                         me.shared.lock().mode = Mode::Preview;
-                        on_error(format!("Klavyeye kare gönderilemedi: {e}"));
+                        on_error(format!("could not send a frame to the keyboard: {e}"));
                     }
                 }
                 if visible && (!live || n % 2 == 0) {

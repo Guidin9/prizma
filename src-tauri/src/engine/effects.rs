@@ -180,6 +180,12 @@ pub fn render(e: &SwEffect, layout: &Layout, t: f32, inp: &Inputs, st: &mut Stat
     let new_presses = inp.presses;
 
     match e.kind.as_str() {
+        "solid" => {
+            let c = e.colours.first().map(|c| [c[0] as f32, c[1] as f32, c[2] as f32]).unwrap_or([255.0; 3]);
+            for o in out.iter_mut() {
+                *o = c;
+            }
+        }
         "wave" => {
             for (i, k) in layout.keys.iter().enumerate() {
                 out[i] = palette(&e.colours, along(k, &e.direction) / sc - tt * 0.25);
@@ -344,7 +350,13 @@ pub fn render(e: &SwEffect, layout: &Layout, t: f32, inp: &Inputs, st: &mut Stat
             }
         }
         "ambient" => {
+            // smoothed colour per key lives in the effect's own state (not in `out`, which may be
+            // a buffer shared with other layers)
             let g = inp.screen;
+            if st.aux.len() != n * 3 {
+                st.aux = vec![0.0; n * 3];
+            }
+            let a = (dt * 10.0 * sp).min(1.0);
             for (i, k) in layout.keys.iter().enumerate() {
                 if g.w == 0 || g.h == 0 {
                     out[i] = [0.0; 3];
@@ -353,8 +365,11 @@ pub fn render(e: &SwEffect, layout: &Layout, t: f32, inp: &Inputs, st: &mut Stat
                 let gx = ((k.cx * g.w as f32) as usize).min(g.w - 1);
                 let gy = ((k.cy * g.h as f32) as usize).min(g.h - 1);
                 let target = g.px[gy * g.w + gx];
-                let cur = out[i];
-                out[i] = lerp(cur, target, (dt * 10.0 * sp).min(1.0));
+                let cur = &mut st.aux[i * 3..i * 3 + 3];
+                for c in 0..3 {
+                    cur[c] += (target[c] - cur[c]) * a;
+                }
+                out[i] = [cur[0], cur[1], cur[2]];
             }
         }
         _ => {
@@ -379,7 +394,7 @@ mod tests {
         let audio = AudioLevels { bands: [0.7; 16], level: 0.6, bass: 0.8 };
         let screen = ScreenGrid { w: 4, h: 2, px: vec![[10.0, 20.0, 30.0]; 8] };
         let presses = vec![(3usize, 0.1f32), (20, 0.2)];
-        for kind in ["wave", "spiral", "aurora", "plasma", "breathe", "stars", "matrix", "fire", "ripple", "trail", "heatmap", "spectrum", "bass", "vu", "ambient"] {
+        for kind in ["solid", "wave", "spiral", "aurora", "plasma", "breathe", "stars", "matrix", "fire", "ripple", "trail", "heatmap", "spectrum", "bass", "vu", "ambient"] {
             let e = SwEffect { kind: kind.into(), speed: 1.0, brightness: 1.0, colours: vec![], direction: "right".into(), scale: 1.0 };
             let mut st = State::default();
             let mut out = Vec::new();

@@ -2,8 +2,10 @@ mod colour;
 mod engine;
 mod k617;
 mod layout;
+mod scenes;
 
-use engine::effects::SwEffect;
+use engine::layers::Scene;
+use scenes::SavedScene;
 use engine::{Engine, Mode};
 use hidapi::HidApi;
 use k617::effects::{self, EffectInfo, HwEffect};
@@ -15,7 +17,7 @@ use std::thread;
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, State, WindowEvent};
 
 struct Device {
     api: Option<HidApi>,
@@ -127,21 +129,23 @@ fn set_visible(eng: State<'_, Arc<Engine>>, visible: bool) {
     eng.shared.lock().visible = visible;
 }
 
-/// Show `effect` on the stage only (nothing is sent to the keyboard).
+/// Show `scene` on the stage only (nothing is sent to the keyboard). While live, the new scene
+/// goes straight to the keyboard.
 #[tauri::command]
-fn engine_preview(eng: State<'_, Arc<Engine>>, effect: Option<SwEffect>) {
+fn engine_preview(eng: State<'_, Arc<Engine>>, scene: Option<Scene>) {
     let mut s = eng.shared.lock();
-    if let Some(e) = effect.clone() {
-        s.effect = Some(e);
+    let some = scene.is_some();
+    if let Some(sc) = scene {
+        s.scene = Some(sc);
     }
     if s.mode != Mode::Live {
-        s.mode = if effect.is_some() { Mode::Preview } else { Mode::Off };
+        s.mode = if some { Mode::Preview } else { Mode::Off };
     }
 }
 
-/// Start streaming `effect` to the keyboard.
+/// Start streaming `scene` to the keyboard.
 #[tauri::command]
-async fn engine_start(state: State<'_, Shared>, eng: State<'_, Arc<Engine>>, effect: SwEffect) -> Result<(), String> {
+async fn engine_start(state: State<'_, Shared>, eng: State<'_, Arc<Engine>>, scene: Scene) -> Result<(), String> {
     let (state, eng) = (state.inner().clone(), eng.inner().clone());
     tauri::async_runtime::spawn_blocking(move || {
         if eng.shared.lock().mode != Mode::Live {
@@ -153,7 +157,7 @@ async fn engine_start(state: State<'_, Shared>, eng: State<'_, Arc<Engine>>, eff
             }
         }
         let mut s = eng.shared.lock();
-        s.effect = Some(effect);
+        s.scene = Some(scene);
         s.mode = Mode::Live;
         Ok(())
     })
@@ -171,11 +175,84 @@ async fn engine_stop(state: State<'_, Shared>, eng: State<'_, Arc<Engine>>) -> R
 fn stop_and_restore(state: &Shared, eng: &Engine) -> Result<HwEffect, String> {
     {
         let mut s = eng.shared.lock();
-        s.mode = if s.effect.is_some() { Mode::Preview } else { Mode::Off };
+        s.mode = if s.scene.is_some() { Mode::Preview } else { Mode::Off };
     }
     thread::sleep(Duration::from_millis(80)); // let the engine finish its last frame
     let hw = state.lock().last_hw.unwrap_or(DEFAULT_HW);
     apply_hw(state, eng, hw)
+}
+
+/// Tray menu entries, renamed when the interface language changes.
+struct Tray {
+    show: MenuItem<tauri::Wry>,
+    quit: MenuItem<tauri::Wry>,
+}
+
+fn tray_texts(lang: &str) -> (&'static str, &'static str) {
+    if lang == "tr" {
+        ("Prizma'yı aç", "Çıkış")
+    } else {
+        ("Open Prizma", "Quit")
+    }
+}
+
+fn settings_path(app: &AppHandle) -> Option<std::path::PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("settings.json"))
+}
+
+/// Language for the tray before the window has ever opened: the one the user chose, else
+/// Windows' display language.
+fn startup_lang(app: &AppHandle) -> String {
+    let chosen = settings_path(app)
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .and_then(|v| v.get("lang").and_then(|l| l.as_str()).map(str::to_string));
+    chosen.unwrap_or_else(|| {
+        // primary language id 0x1F = Turkish
+        let id = unsafe { windows::Win32::Globalization::GetUserDefaultUILanguage() };
+        if id & 0x3FF == 0x1F { "tr" } else { "en" }.to_string()
+    })
+}
+
+#[tauri::command]
+fn set_language(app: AppHandle, tray: State<'_, Tray>, lang: String) {
+    let lang = if lang == "tr" { "tr" } else { "en" };
+    let (show, quit) = tray_texts(lang);
+    let _ = tray.show.set_text(show);
+    let _ = tray.quit.set_text(quit);
+    if let Some(p) = settings_path(&app) {
+        if let Some(dir) = p.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::write(p, serde_json::json!({ "lang": lang }).to_string());
+    }
+}
+
+fn scenes_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path().app_config_dir().map(|d| d.join("scenes.json")).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn scenes_list(app: AppHandle) -> Result<Vec<SavedScene>, String> {
+    Ok(scenes::load(&scenes_path(&app)?))
+}
+
+#[tauri::command]
+fn scene_save(app: AppHandle, name: String, scene: Scene) -> Result<Vec<SavedScene>, String> {
+    let path = scenes_path(&app)?;
+    let mut list = scenes::load(&path);
+    scenes::upsert(&mut list, &name, scene).map_err(|e| e.to_string())?;
+    scenes::store(&path, &list).map_err(|e| e.to_string())?;
+    Ok(list)
+}
+
+#[tauri::command]
+fn scene_delete(app: AppHandle, name: String) -> Result<Vec<SavedScene>, String> {
+    let path = scenes_path(&app)?;
+    let mut list = scenes::load(&path);
+    scenes::remove(&mut list, &name);
+    scenes::store(&path, &list).map_err(|e| e.to_string())?;
+    Ok(list)
 }
 
 fn event_kind(raw: &[u8]) -> &'static str {
@@ -237,12 +314,23 @@ fn spawn_event_thread(app: AppHandle, state: Shared, eng: Arc<Engine>) {
     });
 }
 
+/// Show the window, creating it first: it is destroyed while Prizma sits in the tray, which frees
+/// the web view (about 500 MB and a steady few % CPU when kept alive but hidden).
 fn show_main(app: &AppHandle) {
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.show();
-        let _ = w.unminimize();
-        let _ = w.set_focus();
-    }
+    let w = match app.get_webview_window("main") {
+        Some(w) => w,
+        None => {
+            let Some(cfg) = app.config().app.windows.iter().find(|w| w.label == "main").cloned() else { return };
+            match tauri::WebviewWindowBuilder::from_config(app, &cfg).and_then(|b| b.build()) {
+                Ok(w) => w,
+                Err(_) => return,
+            }
+        }
+    };
+    let _ = w.show();
+    let _ = w.unminimize();
+    let _ = w.set_focus();
+    app.state::<Arc<Engine>>().shared.lock().visible = true;
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -267,12 +355,18 @@ pub fn run() {
             set_visible,
             engine_preview,
             engine_start,
-            engine_stop
+            engine_stop,
+            scenes_list,
+            scene_save,
+            scene_delete,
+            set_language
         ])
         .setup(move |app| {
-            let show = MenuItem::with_id(app, "show", "Prizma'yı aç", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Çıkış", true, None::<&str>)?;
+            let (show_text, quit_text) = tray_texts(&startup_lang(app.handle()));
+            let show = MenuItem::with_id(app, "show", show_text, true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", quit_text, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
+            app.manage(Tray { show: show.clone(), quit: quit.clone() });
             let (q_state, q_eng) = (shared.clone(), eng.clone());
             TrayIconBuilder::with_id("tray")
                 .icon(app.default_window_icon().unwrap().clone())
@@ -313,10 +407,15 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| match event {
-            WindowEvent::CloseRequested { api, .. } => {
-                api.prevent_close(); // keep running in the tray
-                let _ = window.hide();
-                window.state::<Arc<Engine>>().shared.lock().visible = false;
+            // closing the window only sends Prizma to the tray: the window (and its web view) is
+            // destroyed, the engine keeps running; `show_main` builds a new window
+            WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed => {
+                let eng = window.state::<Arc<Engine>>();
+                let mut s = eng.shared.lock();
+                s.visible = false;
+                if s.mode == Mode::Preview {
+                    s.mode = Mode::Off;
+                }
             }
             WindowEvent::Focused(_) => {
                 let visible = window.is_visible().unwrap_or(true);
@@ -324,6 +423,14 @@ pub fn run() {
             }
             _ => {}
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Prizma");
+        .build(tauri::generate_context!())
+        .expect("error while building Prizma")
+        .run(|_app, event| {
+            // no window is not a reason to quit; only the tray's Quit (an explicit exit code) is
+            if let RunEvent::ExitRequested { api, code, .. } = event {
+                if code.is_none() {
+                    api.prevent_exit();
+                }
+            }
+        });
 }

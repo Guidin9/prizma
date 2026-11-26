@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Prizma",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "identifier": "io.github.guidin9.prizma",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -13,6 +13,7 @@
     "windows": [
       {
         "label": "main",
+        "create": false,
         "title": "Prizma",
         "width": 1320,
         "height": 840,
@@ -33,11 +34,26 @@
     "targets": "all",
     "icon": [
       "icons/32x32.png",
+      "icons/64x64.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "shortDescription": "Redragon K617 Fizz ışık ve tuş stüdyosu"
+    "shortDescription": "RGB lighting studio for the Redragon K617 Fizz keyboard",
+    "longDescription": "Prizma is an open-source Windows app for the Redragon K617 Fizz keyboard: the keyboard's own effects with colour, speed and brightness, plus live per-key effects (animations, music visualizer, screen sync, key-press reactions) built from layers.",
+    "publisher": "Guidin9",
+    "homepage": "https://github.com/Guidin9/prizma",
+    "category": "Utility",
+    "copyright": "GPL-3.0-or-later",
+    "windows": {
+      "nsis": {
+        "languages": [
+          "English",
+          "Turkish"
+        ],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }
