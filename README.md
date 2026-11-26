@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Guidin9/prizma/releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/Guidin9/prizma?label=download&color=8f7bff"></a>
+  <a href="https://github.com/Guidin9/prizma/releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/Guidin9/prizma?label=download&sort=semver&color=8f7bff"></a>
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-3dd6ff">
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-4dff91"></a>
   <a href="README.tr.md"><img alt="Türkçe" src="https://img.shields.io/badge/README-T%C3%BCrk%C3%A7e-ff3d6e"></a>
