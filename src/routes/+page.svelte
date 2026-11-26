@@ -167,6 +167,9 @@
     // keep a blend the user chose; follow the effect's natural blend otherwise
     const blend = old.blend === defaultBlend(old.effect.kind) ? defaultBlend(kind) : old.blend;
     setScene({ layers: scene.layers.map((l, i) => (i === sel ? { ...l, effect, blend } : l)) });
+    // picking an effect starts it on the keyboard right away; while live, the scene update above
+    // already reaches the keyboard
+    if (engine !== 'live' && connected && !busy) startLive();
   }
 
   function setScene(next: Scene) {

@@ -45,7 +45,7 @@ keyboard directly over USB HID, never touches the firmware, and runs in the syst
   (Flash away, Ripples shining, Reaction, Perfect) are clearly marked, because they stay dark until
   you type.
 
-**Live effects** (rendered by Prizma at 60 fps and streamed to the keyboard per key)
+**Live effects** (rendered by Prizma at 60 fps and streamed to the keyboard per key; click an effect and it starts on the keyboard)
 
 - Animations: solid colour, rainbow wave (7 directions), spiral, aurora, plasma, breathing
   gradient, stardust, Matrix rain, fire.
@@ -72,7 +72,7 @@ keyboard directly over USB HID, never touches the firmware, and runs in the syst
 
 ## Download and install
 
-1. Download **`Prizma_1.0.0_x64-setup.exe`** (or the `.msi`) from the
+1. Download **`Prizma_<version>_x64-setup.exe`** (or the `.msi`) from the
    [latest release](https://github.com/Guidin9/prizma/releases/latest).
 2. Run it. Windows SmartScreen may warn because the installer is not code-signed: choose
    *More info → Run anyway*.

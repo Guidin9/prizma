@@ -1,6 +1,6 @@
 [package]
 name = "prizma"
-version = "1.0.0"
+version = "1.0.1"
 description = "Prizma - open-source RGB lighting studio for the Redragon K617 Fizz keyboard"
 authors = ["Mert Demirdöven"]
 license = "GPL-3.0-or-later"

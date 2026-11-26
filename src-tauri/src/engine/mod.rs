@@ -37,6 +37,9 @@ pub struct Shared {
     pub presses: Vec<usize>,
 }
 
+/// What the patched firmware writes to the Fn LED while Fn lock (profile 1) is on.
+const FN_LOCK_WHITE: [u8; 3] = [255, 255, 255];
+
 pub type SendFrame = Box<dyn Fn(&[u8; 382]) -> anyhow::Result<()> + Send>;
 pub type EmitFrame = Box<dyn Fn(Vec<[u8; 3]>) + Send>;
 pub type EmitError = Box<dyn Fn(String) + Send>;
@@ -143,19 +146,24 @@ impl Engine {
                 let screen = me.screen.lock().clone();
                 layers::render(&scene, &layout, t, &Inputs { presses: &pressed, audio: &audio, screen: &screen }, &mut st, &mut out);
                 let mut keys: Vec<[u8; 3]> = out.iter().map(|c| [c[0].clamp(0.0, 255.0) as u8, c[1].clamp(0.0, 255.0) as u8, c[2].clamp(0.0, 255.0) as u8]).collect();
+                let fn_key = layout.keys.iter().position(|k| k.ansi == "Fn");
                 if lock {
-                    if let Some(i) = layout.keys.iter().position(|k| k.ansi == "Fn") {
+                    if let Some(i) = fn_key {
                         keys[i] = [255, 255, 255];
                     }
                 }
                 if live {
                     frame[4..].fill(0);
-                    for (k, rgb) in layout.keys.iter().zip(&keys) {
+                    for (i, (k, rgb)) in layout.keys.iter().zip(&keys).enumerate() {
+                        // the stage shows sRGB; the LEDs need it corrected. Exception: the Fn-lock
+                        // white. The patched firmware paints the Fn LED FF FF FF itself every ~30 ms
+                        // while profile 1 is active, into the same buffer these frames fill; sending
+                        // a different (corrected) white made the key flicker between the two.
+                        let led_rgb = if lock && Some(i) == fn_key { FN_LOCK_WHITE } else { crate::colour::to_led_u8(*rgb) };
                         for &led in &k.leds {
                             let o = 4 + led * 3;
                             if o + 3 <= frame.len() {
-                                // the stage shows sRGB; the LEDs need it corrected
-                                frame[o..o + 3].copy_from_slice(&crate::colour::to_led_u8(*rgb));
+                                frame[o..o + 3].copy_from_slice(&led_rgb);
                             }
                         }
                     }

@@ -48,7 +48,7 @@ USB HID üzerinden konuşur, firmware'e dokunmaz; penceresi kapalıyken sistem t
   efektler (Uçup giden, Parlayan halkalar, Tepki, Mükemmel) ayrıca işaretli, çünkü yazmazsan
   karanlık kalırlar.
 
-**Canlı efektler** (Prizma 60 fps çizer, klavyeye tuş tuş gönderir)
+**Canlı efektler** (Prizma 60 fps çizer, klavyeye tuş tuş gönderir; efekte tıklayınca klavyede başlar)
 
 - Animasyonlar: düz renk, gökkuşağı dalgası (7 yön), sarmal, aurora, plazma, nefes gradyanı,
   yıldız tozu, Matrix yağmuru, ateş.
@@ -76,7 +76,7 @@ USB HID üzerinden konuşur, firmware'e dokunmaz; penceresi kapalıyken sistem t
 ## İndirme ve kurulum
 
 1. [Son sürümden](https://github.com/Guidin9/prizma/releases/latest)
-   **`Prizma_1.0.0_x64-setup.exe`** (ya da `.msi`) dosyasını indir.
+   **`Prizma_<sürüm>_x64-setup.exe`** (ya da `.msi`) dosyasını indir.
 2. Çalıştır. Kurulum dosyası imzalı olmadığı için Windows SmartScreen uyarı verebilir:
    *Ek bilgi → Yine de çalıştır*.
 3. Prizma'yı kullanırken resmî Redragon yazılımını kapat; ikisi aynı USB arayüzünü kullanır.
