@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { HwEffect, Rgb } from '../api';
-  import { shade, type KeyGeo } from '../preview';
+  import { shade, simPresses, type KeyGeo } from '../preview';
 
   interface Props {
     keys: KeyGeo[];
@@ -10,8 +10,10 @@
     lock: boolean;
     /** bump to play the "applied" sweep */
     pulse: number;
+    /** live colours from the software engine (layout order); overrides the preview */
+    colours?: Rgb[] | null;
   }
-  let { keys, bounds, fx, lock, pulse }: Props = $props();
+  let { keys, bounds, fx, lock, pulse, colours = null }: Props = $props();
 
   let host: HTMLDivElement;
   let canvas: HTMLCanvasElement;
@@ -67,8 +69,10 @@
       const ps = s * dpr;
 
       const pulseP = pulseStart < 0 ? 1 : (now - pulseStart) / 900;
-      const colours: Rgb[] = keys.map((k) => {
-        let c = shade(fx, k, t);
+      const live = colours;
+      const presses = live ? [] : simPresses(keys, t);
+      const keyColours: Rgb[] = keys.map((k, i) => {
+        let c: Rgb = live && live[i] ? [...live[i]] as Rgb : shade(fx, k, t, presses);
         if (lock && k.name === 'Fn') c = [255, 255, 255];
         if (pulseP < 1) {
           const front = 1.15 - pulseP * 1.3;
@@ -81,7 +85,7 @@
       // light layer: what the LEDs emit, used for glow and the desk reflection
       lctx.clearRect(0, 0, light.width, light.height);
       keys.forEach((k, i) => {
-        const [r, g, b] = colours[i];
+        const [r, g, b] = keyColours[i];
         lctx.fillStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
         for (const [a, bb, c, d] of k.rects) lctx.fillRect(px(a), py(bb), (c - a) * ps, (d - bb) * ps);
       });
@@ -117,7 +121,7 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       keys.forEach((k, i) => {
-        const [r, g, b] = colours[i];
+        const [r, g, b] = keyColours[i];
         const lum = (r * 0.3 + g * 0.59 + b * 0.11) / 255;
         for (const [a, bb, c, d] of k.rects) {
           const x = px(a);

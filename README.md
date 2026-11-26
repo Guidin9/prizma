@@ -6,14 +6,18 @@ Prizma, klavyenin kendi efektlerini (sabit, nefes, gökkuşağı, yılan ve diğ
 
 ## Durum
 
-Aşama 1 (bu sürüm): klavyenin kendi efektleri, canlı klavye önizlemesi, Türkçe Q (ISO) ve ABD (ANSI) dizilim, Fn kilidi göstergesi, tepsi.
+- **Klavyenin kendi efektleri:** 20 efekt; her efekt kendi rengini, hızını ve parlaklığını hatırlar (klavye bunları efekt başına ayrı saklar). Ön izlemeler klavyenin gerçek görüntüsüne göre modellenmiştir; tuşa basınca çalışan efektler ayrıca işaretlidir.
+- **Canlı efektler (Prizma açıkken):** animasyonlar (gökkuşağı dalgası, sarmal, aurora, plazma, ateş, matrix ve diğerleri), tuşa basınca dalga/iz/ısı haritası, müziğe göre spektrum/bas/ses seviyesi, ekran rengi. Durdurunca ya da Prizma kapanınca klavye kendi efektine döner.
+- **Renk düzeltmesi:** K617'nin LED'leri ekran renklerini düz değerle sürer ve mavisi çok güçlüdür; Prizma renkleri göndermeden önce gama (2,2) ve mavi dengesiyle düzeltir, böylece sarı beyaza, beyaz mora kaçmaz.
+- Türkçe Q (ISO) ve ABD (ANSI) dizilim, Fn kilidi göstergesi, sistem tepsisi.
 
-Sırada: bilgisayarda çalışan efektler (müzik, ekran rengi, tuşa basınca dalga, animasyon kütüphanesi), katmanlı efekt editörü, oyuna göre profil, sistem göstergeleri, tuş atama ve makro.
+Sırada: katmanlı efekt editörü, oyuna göre profil, sistem göstergeleri, tuş atama ve makro.
 
 ## Güvenlik
 
 - Prizma klavyenin firmware'ine dokunmaz; yalnızca ayar bloklarını, resmi uygulamanın kullandığı yolla yazar.
-- Her yazmadan önce klavyedeki güncel bloklar okunur ve yalnızca değişen baytlar değiştirilir.
+- Her yazmadan önce klavyedeki güncel bloklar okunur ve yalnızca değişen baytlar değiştirilir. Renk değişmediyse yalnızca ayar bloğu yazılır (daha az flaş yazması).
+- Canlı efektler flaşa hiç yazmaz; klavyeye geçici kareler gönderir.
 - Profil kaydı bozuksa (ikinci profil hiç kullanılmamışsa) önce birinci profil kopyalanır; aksi halde firmware tüm ayarları fabrika değerlerine döndürür.
 
 ## Geliştirme

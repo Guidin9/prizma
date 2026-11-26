@@ -65,136 +65,197 @@ export function hsv(h: number, s = 1, v = 1): Rgb {
 const scale = (c: Rgb, k: number): Rgb => [c[0] * k, c[1] * k, c[2] * k];
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 
-/** Colour of one key for effect `e` at time `t` (seconds). */
-export function shade(e: HwEffect, k: KeyGeo, t: number): Rgb {
+/** A (simulated) key press for the reactive effects' previews. */
+export interface Press {
+  x: number;
+  y: number;
+  t: number;
+  hue: number;
+}
+
+/** Firmware effects that stay dark until a key is pressed (seen on the device). */
+export const REACTIVE = new Set([0x04, 0x07, 0x0c, 0x14]);
+
+/** Deterministic "someone is typing" presses so the reactive previews have something to show. */
+export function simPresses(keys: KeyGeo[], t: number, every = 0.45): Press[] {
+  const out: Press[] = [];
+  if (!keys.length) return out;
+  const n0 = Math.floor(t / every);
+  for (let n = Math.max(0, n0 - 6); n <= n0; n++) {
+    const k = keys[Math.floor(hash(n * 104729 + 7) * keys.length)];
+    out.push({ x: k.cx, y: k.cy, t: n * every, hue: hash(n * 31 + 3) });
+  }
+  return out;
+}
+
+/**
+ * Colour of one key for firmware effect `e` at time `t` (seconds). Modelled on photos of the real
+ * keyboard (desk camera, every effect in multicolour mode); still an approximation.
+ */
+export function shade(e: HwEffect, k: KeyGeo, t: number, presses: Press[] = []): Rgb {
   const speed = 0.35 + (e.speed - 1) * 0.3;
   const dir = e.reverse ? -1 : 1;
   const tt = t * speed;
   const level = 0.25 + e.brightness * 0.1875; // firmware 0..4 -> 0.25..1
   const base = (hue: number): Rgb => (e.colour ? e.colour : hsv(hue));
   const x = e.reverse ? 1 - k.cx : k.cx;
-  let c: Rgb;
+  // keys are ~1/15 of the board wide; the board is ~3x wider than tall
+  const dist = (p: Press) => Math.hypot(k.cx - p.x, (k.cy - p.y) * 0.34);
+  const age = (p: Press) => (t - p.t) * speed;
+  const angle = () => Math.atan2((k.cy - 0.5) * 0.34, k.cx - 0.5) / (Math.PI * 2);
+  let c: Rgb = [0, 0, 0];
   let v = 1;
   switch (e.id) {
-    case 0x01: // fixed
+    case 0x01: // fixed: a still rainbow across the board in multicolour
       c = base(k.cx * 0.9);
       break;
-    case 0x02: // respire
-      c = base(tt * 0.15);
-      v = 0.15 + 0.85 * (0.5 - 0.5 * Math.cos(tt * 2.2));
+    case 0x02: // respire: the whole board breathes, the colour moves on with each breath
+      c = base(0.62 - k.cx * 0.15 + Math.floor((tt * 2.2) / (Math.PI * 2)) * 0.17);
+      v = 0.08 + 0.92 * (0.5 - 0.5 * Math.cos(tt * 2.2));
       break;
-    case 0x03: // rainbow wave
-      c = e.colour ? e.colour : hsv(x * 0.9 - tt * 0.5);
-      v = e.colour ? 0.35 + 0.65 * (0.5 + 0.5 * Math.sin((x - tt * 0.5) * Math.PI * 2)) : 1;
+    case 0x03: // rainbow: the whole board shifts hue together
+      c = base(0.16 - tt * 0.12);
       break;
-    case 0x04: // flash away
-    case 0x08: {
-      // stars: random keys flare and fade
-      const period = e.id === 0x08 ? 2.6 : 1.4;
-      const ph = (tt / period + k.seed * 3.7) % 1;
-      c = base(k.seed + tt * 0.05);
-      v = ph < 0.12 ? ph / 0.12 : Math.max(0, 1 - (ph - 0.12) / 0.45);
-      v = e.id === 0x08 ? v * v : v;
+    case 0x04: {
+      // flash away: the pressed key's row lights up from the key outwards and fades
+      v = 0;
+      for (const p of presses) {
+        const a = age(p);
+        if (a < 0 || a > 1.1 || Math.abs(k.cy - p.y) > 0.08) continue;
+        if (Math.abs(k.cx - p.x) <= a * 1.6 + 0.04) v = Math.max(v, 1 - a / 1.1);
+      }
+      c = base(k.cx * 0.9 + tt * 0.05);
       break;
     }
     case 0x05: {
-      // raindrops falling per column
-      const col = Math.floor(k.cx * 14);
-      const drop = (tt * 0.9 + hash(col * 31) * 5) % 1.6;
-      const d = drop - k.cy;
-      c = base(hash(col * 13) + tt * 0.03);
-      v = d >= 0 && d < 0.45 ? 1 - d / 0.45 : 0.05;
+      // raindrops: single keys light up at random, each in its own colour, and fade
+      const ph = tt * 0.55 + k.seed * 11.3;
+      const f = ph % 1;
+      c = base(hash(Math.floor(ph) * 977 + k.index));
+      v = f < 0.18 ? 1 - f / 0.18 : 0;
       break;
     }
-    case 0x06: {
-      // rainbow wheel around the centre
-      const a = Math.atan2((k.cy - 0.5) * 0.45, k.cx - 0.5) / (Math.PI * 2);
-      c = e.colour ? e.colour : hsv(a * dir - tt * 0.35);
-      if (e.colour) v = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin((a * dir - tt * 0.35) * Math.PI * 2));
+    case 0x06: // rainbow wheel: colours turn around the middle of the board
+      c = base(angle() * dir - tt * 0.35);
+      break;
+    case 0x07: {
+      // ripples: rings spread from the pressed key across the whole board
+      v = 0;
+      let hue = 0;
+      for (const p of presses) {
+        const a = age(p);
+        if (a < 0 || a > 1.6) continue;
+        const ring = clamp01(1 - Math.abs(dist(p) - a * 0.55) * 22) * (1 - a / 1.6);
+        if (ring > v) {
+          v = ring;
+          hue = p.hue + dist(p) * 2;
+        }
+      }
+      c = base(hue);
       break;
     }
-    case 0x07:
-    case 0x11: {
-      // ripples / blossom: rings from the centre
-      const d = Math.hypot(k.cx - 0.5, (k.cy - 0.5) * 0.4);
-      const r = (tt * 0.45) % 0.8;
-      c = base(d * 1.4 - tt * 0.3);
-      v = e.id === 0x11 ? clamp01(1 - Math.abs(d - r) * 6) * 0.9 + 0.1 : clamp01(1 - Math.abs(d - r) * 9);
+    case 0x08: {
+      // stars: random keys twinkle
+      const cyc = tt / 2.2 + k.seed * 3.7;
+      const ph = cyc % 1;
+      c = base(hash(Math.floor(cyc) * 131 + k.index));
+      v = ph < 0.12 ? ph / 0.12 : Math.max(0, 1 - (ph - 0.12) / 0.35);
+      v *= v;
       break;
     }
-    case 0x09: {
-      // shadow disappear: lit keys fade away in a sweep
-      const sweep = (tt * 0.4) % 1.3;
-      c = base(k.cx);
-      v = clamp01((x - sweep) * 4 + 1);
+    case 0x09: // shadow disappear: every key lit in its own colour, drifting slowly
+      c = base(k.seed + tt * 0.04);
       break;
-    }
     case 0x0a: {
-      // snake running along rows
-      const order = k.cy * 5 + (Math.floor(k.cy * 5) % 2 ? 1 - k.cx : k.cx);
-      const head = (tt * 1.1) % 5.5;
+      // retro snake: a short multicolour snake runs through the rows
+      const rows = 5;
+      const row = Math.min(rows - 1, Math.floor(k.cy * rows));
+      const order = row + (row % 2 ? 1 - x : x);
+      const head = (tt * 2.4) % (rows + 1);
       const d = head - order;
-      c = base(order * 0.18);
-      v = d >= 0 && d < 0.9 ? 1 - d / 0.9 : 0.04;
+      c = base(d * 1.5 + tt * 0.1);
+      v = d >= 0 && d < 0.4 ? 1 - d / 0.4 : 0;
       break;
     }
-    case 0x0b: // neon stream: diagonal flow
-      c = e.colour ? e.colour : hsv((x + k.cy * 0.35) * 0.7 - tt * 0.4);
-      v = e.colour ? 0.3 + 0.7 * (0.5 + 0.5 * Math.sin((x + k.cy * 0.35 - tt * 0.4) * Math.PI * 4)) : 1;
+    case 0x0b: // neon stream: a wide rainbow flows across the whole board
+      c = base(x * 0.55 - tt * 0.35);
       break;
     case 0x0c: {
-      // reaction: dark until a key is "pressed"
-      const ph = (tt * 0.5 + k.seed * 9.1) % 3;
-      c = base(k.seed);
-      v = ph < 0.6 ? 1 - ph / 0.6 : 0.03;
+      // reaction: only the pressed key lights up, then fades
+      v = 0;
+      let hue = 0;
+      for (const p of presses) {
+        const a = age(p);
+        if (a < 0 || a > 0.9 || dist(p) > 0.02) continue;
+        if (1 - a / 0.9 > v) {
+          v = 1 - a / 0.9;
+          hue = p.hue;
+        }
+      }
+      c = base(hue);
       break;
     }
-    case 0x0d: // sine wave
-      c = base(x * 0.6 - tt * 0.2);
-      v = clamp01(0.5 + 0.5 * Math.sin((x * 2 - tt) * Math.PI * 2 + k.cy * 3));
+    case 0x0d: {
+      // sine wave: a thin line of keys rides a moving sine curve
+      const yc = 0.5 + 0.4 * Math.sin((x - tt * 0.35) * Math.PI * 2);
+      c = base(tt * 0.08 + x * 0.3);
+      v = clamp01(1 - Math.abs(k.cy - yc) / 0.14);
       break;
+    }
     case 0x0e: {
-      // scanning bar back and forth
-      const pos = 0.5 + 0.55 * Math.sin(tt * 1.6);
-      c = base(0.55 + pos * 0.3);
-      v = clamp01(1 - Math.abs(k.cx - pos) * 5);
+      // scanning: a wide bar sweeps back and forth, changing colour
+      const pos = 0.5 + 0.6 * Math.sin(tt * 1.4);
+      c = base(0.6 - tt * 0.06);
+      v = clamp01(1 - Math.abs(k.cx - pos) * 3.5);
       break;
     }
-    case 0x0f: {
-      // windmill blades
-      const a = Math.atan2((k.cy - 0.5) * 0.45, k.cx - 0.5);
-      c = base(a / (Math.PI * 2) + tt * 0.1);
-      v = clamp01(Math.cos(a * 4 - tt * dir * 2.4) * 1.5);
+    case 0x0f: // windmill: coloured slices turn around the middle, no gaps
+      c = base(angle() * 2 * dir - tt * 0.3);
       break;
-    }
-    case 0x10: // waterfall
-      c = e.colour ? e.colour : hsv(k.cy * 0.6 - tt * 0.4 + k.cx * 0.15);
-      v = e.colour ? 0.3 + 0.7 * (0.5 + 0.5 * Math.sin((k.cy - tt * 0.6) * Math.PI * 3)) : 1;
+    case 0x10: // waterfall: each row its own colour, flowing down the board
+      c = base(k.cy * 0.7 - tt * 0.4);
+      break;
+    case 0x11: // blossom: colour rings open out from the middle and fill the board
+      c = base(Math.hypot(k.cx - 0.5, (k.cy - 0.5) * 0.34) * 2.6 - tt * 0.4);
       break;
     case 0x12: {
-      // rotating storm: spiral
-      const a = Math.atan2((k.cy - 0.5) * 0.45, k.cx - 0.5) / (Math.PI * 2);
-      const d = Math.hypot(k.cx - 0.5, (k.cy - 0.5) * 0.45);
-      c = e.colour ? e.colour : hsv(a * dir + d * 2 - tt * 0.5);
-      if (e.colour) v = 0.25 + 0.75 * (0.5 + 0.5 * Math.sin((a * dir + d * 2 - tt * 0.5) * Math.PI * 4));
+      // rotating storm: scattered keys burst out from the middle, then the board goes dark
+      const cyc = (tt * 0.33) % 1;
+      const d = Math.hypot(k.cx - 0.5, (k.cy - 0.5) * 0.34);
+      c = base(k.seed + angle() + tt * 0.1);
+      v = k.seed > 0.4 && cyc < 0.75 ? clamp01(1 - Math.abs(d - cyc * 0.75) * 7) : 0;
       break;
     }
     case 0x13: {
-      // collision: two fronts meet in the middle
+      // collision: two colourful fronts run in from the sides and meet in the middle
       const p = (tt * 0.5) % 1;
-      const left = clamp01(1 - Math.abs(k.cx - p * 0.5) * 8);
-      const right = clamp01(1 - Math.abs(k.cx - (1 - p * 0.5)) * 8);
+      const left = clamp01(1 - Math.abs(k.cx - p * 0.5) * 7);
+      const right = clamp01(1 - Math.abs(k.cx - (1 - p * 0.5)) * 7);
       const burst = p > 0.85 ? clamp01(1 - Math.abs(k.cx - 0.5) * 3) * (1 - (p - 0.85) / 0.15) : 0;
-      c = base(k.cx < 0.5 ? 0.0 : 0.6);
-      v = Math.max(left, right, burst);
+      c = base(k.seed * 0.6 + (k.cx < 0.5 ? 0 : 0.5));
+      v = Math.max(left, right, burst) * (k.seed > 0.25 ? 1 : 0.3);
       break;
     }
-    case 0x14: // perfect: rainbow that breathes
-      c = base(k.cx * 0.9 - tt * 0.3);
-      v = 0.35 + 0.65 * (0.5 - 0.5 * Math.cos(tt * 1.4));
+    case 0x14: {
+      // perfect: the pressed key and its neighbours light up in a small cross
+      v = 0;
+      let hue = 0;
+      for (const p of presses) {
+        const a = age(p);
+        if (a < 0 || a > 1) continue;
+        const dx = Math.abs(k.cx - p.x);
+        const dy = Math.abs(k.cy - p.y);
+        const reach = 0.035 + a * 0.12;
+        const onCross = (dy < 0.06 && dx < reach) || (dx < 0.04 && dy < reach * 3);
+        if (onCross && 1 - a > v) {
+          v = 1 - a;
+          hue = p.hue + dx * 3;
+        }
+      }
+      c = base(hue);
       break;
+    }
     case 0x16: // off
-      c = [0, 0, 0];
       v = 0;
       break;
     default:
@@ -203,27 +264,27 @@ export function shade(e: HwEffect, k: KeyGeo, t: number): Rgb {
   return scale(c, v * level);
 }
 
-/** Short, honest descriptions of what each firmware effect does. */
+/** What each firmware effect looks like on the keyboard (checked with a camera, multicolour mode). */
 export const DESCRIPTIONS: Record<number, string> = {
-  0x01: 'Bütün tuşlar sabit yanar.',
-  0x02: 'Işık yavaşça yanıp söner, nefes alır gibi.',
-  0x03: 'Renkler klavye boyunca dalga halinde akar.',
-  0x04: 'Tuşlar tek tek parlayıp uzaklaşır.',
-  0x05: 'Işık damlaları yukarıdan aşağı düşer.',
+  0x01: 'Bütün tuşlar sabit yanar. Çok renkte klavye boyunca duran bir gökkuşağı olur.',
+  0x02: 'Bütün klavye nefes alır gibi yanıp söner; çok renkte her nefeste renk değişir.',
+  0x03: 'Bütün klavye aynı anda yavaşça renkten renge geçer.',
+  0x04: 'Tuşa basınca o tuşun bütün satırı yanar ve söner. Basmazsan klavye karanlık kalır.',
+  0x05: 'Rastgele tuşlar tek tek, her biri kendi renginde yanıp söner.',
   0x06: 'Renkler klavyenin ortası etrafında döner.',
-  0x07: 'Halkalar ortadan dışarı yayılır.',
+  0x07: 'Bastığın tuştan bütün klavyeye halka halka ışık yayılır. Basmazsan karanlık kalır.',
   0x08: 'Rastgele tuşlar yıldız gibi pırıldar.',
-  0x09: 'Yanan tuşlar bir taraftan kaybolur.',
-  0x0a: 'Bir ışık yılanı satırlar boyunca kıvrılır.',
-  0x0b: 'Neon renkler çapraz akar.',
-  0x0c: 'Bastığın tuş yanar, sonra söner.',
-  0x0d: 'Parlaklık sinüs dalgası gibi ilerler.',
-  0x0e: 'Bir ışık şeridi sağa sola tarar.',
-  0x0f: 'Işık kanatları yel değirmeni gibi döner.',
-  0x10: 'Renkler şelale gibi akar.',
-  0x11: 'Işık ortadan çiçek gibi açılır.',
-  0x12: 'Renkler sarmal halinde döner.',
-  0x13: 'İki ışık cephesi ortada çarpışır.',
-  0x14: 'Gökkuşağı nefes alır gibi parlar.',
+  0x09: 'Her tuş kendi renginde yanar, renkler yavaşça kayar.',
+  0x0a: 'Kısa, renkli bir ışık yılanı satırlar boyunca hızla koşar.',
+  0x0b: 'Geniş bir gökkuşağı bütün klavyede yana doğru akar.',
+  0x0c: 'Yalnızca bastığın tuş yanar, sonra söner. Basmazsan karanlık kalır.',
+  0x0d: 'İnce bir ışık çizgisi dalga gibi kıvrılarak ilerler.',
+  0x0e: 'Geniş bir ışık şeridi sağa sola tarar, rengi değişir.',
+  0x0f: 'Renkli dilimler yel değirmeni gibi ortada döner.',
+  0x10: 'Her satır ayrı renkte; renkler şelale gibi aşağı akar.',
+  0x11: 'Renk halkaları ortadan açılıp bütün klavyeyi doldurur.',
+  0x12: 'Dağınık ışıklar ortadan dışarı patlar, sonra söner.',
+  0x13: 'İki renkli ışık grubu yanlardan gelip ortada çarpışır.',
+  0x14: 'Bastığın tuş ve çevresi artı şeklinde yanar. Basmazsan karanlık kalır.',
   0x16: 'Arka ışık kapanır.',
 };

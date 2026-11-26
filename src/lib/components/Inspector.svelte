@@ -1,7 +1,8 @@
 <script lang="ts">
   import type { EffectInfo, HwEffect, Rgb } from '../api';
   import { sameEffect } from '../api';
-  import { DESCRIPTIONS } from '../preview';
+  import { DESCRIPTIONS, REACTIVE } from '../preview';
+  import KeyPressIcon from './KeyPressIcon.svelte';
 
   interface Props {
     info: EffectInfo;
@@ -37,6 +38,16 @@
   <header>
     <h2>{info.name}</h2>
     <p class="desc">{DESCRIPTIONS[info.id] ?? ''}</p>
+    {#if REACTIVE.has(info.id)}
+      <div class="reactive" role="note">
+        <span class="ricon"><KeyPressIcon size={18} /></span>
+        <div>
+          <strong>Tuşa basınca çalışır</strong>
+          <p>Klavye sen bir tuşa basana kadar karanlık kalır; bu bir arıza değil. Ön izlemede sanal tuş basışları gösteriliyor.</p>
+        </div>
+      </div>
+    {/if}
+    <p class="approx">Ekrandaki ön izleme yaklaşık; asıl görünüm klavyede. Her efekt kendi rengini ve hızını hatırlar.</p>
   </header>
 
   {#if info.colour}
@@ -135,6 +146,39 @@
   .desc {
     margin: var(--s2) 0 0;
     color: var(--muted);
+  }
+  .reactive {
+    display: flex;
+    gap: var(--s3);
+    margin-top: var(--s4);
+    padding: var(--s3);
+    border-radius: 12px;
+    border: 1px solid var(--line-strong);
+    background: linear-gradient(135deg, #2a2545, #1d1930);
+  }
+  .ricon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border-radius: 9px;
+    background: var(--ink);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px #ffffff1f;
+  }
+  .reactive strong {
+    font-size: 13.5px;
+  }
+  .reactive p {
+    margin: 2px 0 0;
+    font-size: 12.5px;
+    color: var(--muted);
+  }
+  .approx {
+    margin: var(--s2) 0 0;
+    font-size: 12.5px;
+    color: var(--faint);
   }
   h3 {
     margin: 0 0 var(--s3);

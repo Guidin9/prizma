@@ -23,7 +23,19 @@ export interface Status {
   connected: boolean;
   lock: boolean | null;
   effect: HwEffect | null;
+  /** settings the keyboard keeps for every effect; each effect remembers its own */
+  stored: HwEffect[];
+  engine: 'off' | 'preview' | 'live';
   error: string | null;
+}
+
+export interface SwEffect {
+  kind: string;
+  speed: number; // 0.25..3
+  brightness: number; // 0..1
+  colours: Rgb[]; // empty = full spectrum
+  direction: string;
+  scale: number;
 }
 
 export interface KbdEvent {
@@ -36,7 +48,20 @@ export const api = {
   catalog: () => invoke<EffectInfo[]>('effect_catalog'),
   layouts: async () => JSON.parse(await invoke<string>('layouts')) as { layouts: Layout[] },
   applyEffect: (effect: HwEffect) => invoke<HwEffect>('apply_effect', { effect }),
+  setLayout: (id: string) => invoke<void>('set_layout', { id }),
+  setVisible: (visible: boolean) => invoke<void>('set_visible', { visible }),
+  enginePreview: (effect: SwEffect | null) => invoke<void>('engine_preview', { effect }),
+  engineStart: (effect: SwEffect) => invoke<void>('engine_start', { effect }),
+  engineStop: () => invoke<HwEffect>('engine_stop'),
 };
+
+export function onEngineFrame(cb: (keys: Rgb[]) => void): Promise<UnlistenFn> {
+  return listen<Rgb[]>('engine-frame', (e) => cb(e.payload));
+}
+
+export function onEngineError(cb: (msg: string) => void): Promise<UnlistenFn> {
+  return listen<string>('engine-error', (e) => cb(e.payload));
+}
 
 export function onLock(cb: (lock: boolean | null) => void): Promise<UnlistenFn> {
   return listen<boolean | null>('kbd-lock', (e) => cb(e.payload));

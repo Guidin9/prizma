@@ -1,5 +1,10 @@
+mod colour;
+mod engine;
 mod k617;
+mod layout;
 
+use engine::effects::SwEffect;
+use engine::{Engine, Mode};
 use hidapi::HidApi;
 use k617::effects::{self, EffectInfo, HwEffect};
 use k617::hid::{self, K617};
@@ -17,15 +22,22 @@ struct Device {
     dev: Option<K617>,
     /// Fn lock = firmware keymap profile 1
     lock: Option<bool>,
+    /// firmware effect to restore when software effects stop
+    last_hw: Option<HwEffect>,
 }
 
 type Shared = Arc<Mutex<Device>>;
+
+const DEFAULT_HW: HwEffect = HwEffect { id: 0x03, colour: None, speed: 3, brightness: 4, reverse: false };
 
 #[derive(Serialize, Clone)]
 struct Status {
     connected: bool,
     lock: Option<bool>,
     effect: Option<HwEffect>,
+    /// settings the keyboard keeps for every effect (catalogue order)
+    stored: Vec<HwEffect>,
+    engine: Mode,
     error: Option<String>,
 }
 
@@ -61,10 +73,17 @@ fn with_dev<T>(state: &Shared, f: impl FnOnce(&K617) -> anyhow::Result<T>) -> Re
 }
 
 #[tauri::command]
-fn status(state: State<'_, Shared>) -> Status {
-    match with_dev(&state, |dev| k617::current_effect(dev)) {
-        Ok(effect) => Status { connected: true, lock: state.lock().lock, effect: Some(effect), error: None },
-        Err(e) => Status { connected: false, lock: None, effect: None, error: Some(e) },
+fn status(state: State<'_, Shared>, eng: State<'_, Arc<Engine>>) -> Status {
+    let engine = eng.shared.lock().mode;
+    match with_dev(&state, |dev| k617::read_settings(dev)) {
+        Ok(k617::Settings { current, stored }) => {
+            let mut d = state.lock();
+            if current.id != effects::SELF_DEFINE {
+                d.last_hw = Some(current);
+            }
+            Status { connected: true, lock: d.lock, effect: Some(current), stored, engine, error: None }
+        }
+        Err(e) => Status { connected: false, lock: None, effect: None, stored: Vec::new(), engine, error: Some(e) },
     }
 }
 
@@ -78,17 +97,85 @@ fn layouts() -> &'static str {
     k617::LAYOUTS_JSON
 }
 
+fn apply_hw(state: &Shared, eng: &Engine, effect: HwEffect) -> Result<HwEffect, String> {
+    if eng.shared.lock().mode == Mode::Live {
+        eng.shared.lock().mode = Mode::Off; // a firmware effect takes the keyboard back
+    }
+    let res = with_dev(state, |dev| {
+        k617::apply_effect(dev, &effect)?;
+        k617::current_effect(dev)
+    })?;
+    state.lock().last_hw = Some(res);
+    Ok(res)
+}
+
 #[tauri::command]
-async fn apply_effect(state: State<'_, Shared>, effect: HwEffect) -> Result<HwEffect, String> {
-    let state = state.inner().clone();
+async fn apply_effect(state: State<'_, Shared>, eng: State<'_, Arc<Engine>>, effect: HwEffect) -> Result<HwEffect, String> {
+    let (state, eng) = (state.inner().clone(), eng.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || apply_hw(&state, &eng, effect)).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn set_layout(eng: State<'_, Arc<Engine>>, id: String) -> Result<(), String> {
+    let l = layout::load(k617::LAYOUTS_JSON, &id).ok_or("unknown layout")?;
+    eng.shared.lock().layout = Arc::new(l);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_visible(eng: State<'_, Arc<Engine>>, visible: bool) {
+    eng.shared.lock().visible = visible;
+}
+
+/// Show `effect` on the stage only (nothing is sent to the keyboard).
+#[tauri::command]
+fn engine_preview(eng: State<'_, Arc<Engine>>, effect: Option<SwEffect>) {
+    let mut s = eng.shared.lock();
+    if let Some(e) = effect.clone() {
+        s.effect = Some(e);
+    }
+    if s.mode != Mode::Live {
+        s.mode = if effect.is_some() { Mode::Preview } else { Mode::Off };
+    }
+}
+
+/// Start streaming `effect` to the keyboard.
+#[tauri::command]
+async fn engine_start(state: State<'_, Shared>, eng: State<'_, Arc<Engine>>, effect: SwEffect) -> Result<(), String> {
+    let (state, eng) = (state.inner().clone(), eng.inner().clone());
     tauri::async_runtime::spawn_blocking(move || {
-        with_dev(&state, |dev| {
-            k617::apply_effect(dev, &effect)?;
-            k617::current_effect(dev)
-        })
+        if eng.shared.lock().mode != Mode::Live {
+            // remember the firmware effect so stopping can hand the keyboard back to it
+            if let Ok(e) = with_dev(&state, |dev| k617::current_effect(dev)) {
+                if e.id != effects::SELF_DEFINE {
+                    state.lock().last_hw = Some(e);
+                }
+            }
+        }
+        let mut s = eng.shared.lock();
+        s.effect = Some(effect);
+        s.mode = Mode::Live;
+        Ok(())
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// Stop streaming and give the keyboard back its own effect.
+#[tauri::command]
+async fn engine_stop(state: State<'_, Shared>, eng: State<'_, Arc<Engine>>) -> Result<HwEffect, String> {
+    let (state, eng) = (state.inner().clone(), eng.inner().clone());
+    tauri::async_runtime::spawn_blocking(move || stop_and_restore(&state, &eng)).await.map_err(|e| e.to_string())?
+}
+
+fn stop_and_restore(state: &Shared, eng: &Engine) -> Result<HwEffect, String> {
+    {
+        let mut s = eng.shared.lock();
+        s.mode = if s.effect.is_some() { Mode::Preview } else { Mode::Off };
+    }
+    thread::sleep(Duration::from_millis(80)); // let the engine finish its last frame
+    let hw = state.lock().last_hw.unwrap_or(DEFAULT_HW);
+    apply_hw(state, eng, hw)
 }
 
 fn event_kind(raw: &[u8]) -> &'static str {
@@ -104,7 +191,7 @@ fn event_kind(raw: &[u8]) -> &'static str {
 }
 
 /// Listens on Col03 for keyboard events; reconnects when the keyboard is unplugged.
-fn spawn_event_thread(app: AppHandle, state: Shared) {
+fn spawn_event_thread(app: AppHandle, state: Shared, eng: Arc<Engine>) {
     thread::spawn(move || loop {
         let dev = {
             let mut d = state.lock();
@@ -129,10 +216,15 @@ fn spawn_event_thread(app: AppHandle, state: Shared) {
                 Ok(n) => {
                     let raw = buf[..n].to_vec();
                     let kind = event_kind(&raw);
-                    if kind == "lock_toggle" {
-                        let mut d = state.lock();
-                        d.lock = d.lock.map(|v| !v).or(Some(true));
-                        let _ = app.emit("kbd-lock", d.lock);
+                    match kind {
+                        "lock_toggle" => {
+                            let mut d = state.lock();
+                            d.lock = d.lock.map(|v| !v).or(Some(true));
+                            eng.shared.lock().lock = d.lock.unwrap_or(false);
+                            let _ = app.emit("kbd-lock", d.lock);
+                        }
+                        "fn_down" => eng.press_fn(),
+                        _ => {}
                     }
                     let _ = app.emit("kbd-event", KbdEvent { kind, raw });
                 }
@@ -155,7 +247,8 @@ fn show_main(app: &AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let shared: Shared = Arc::new(Mutex::new(Device { api: None, dev: None, lock: None }));
+    let shared: Shared = Arc::new(Mutex::new(Device { api: None, dev: None, lock: None, last_hw: None }));
+    let eng = Engine::new(layout::load(k617::LAYOUTS_JSON, "tr_iso").expect("layout"));
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| show_main(app)))
         .plugin(tauri_plugin_autostart::init(
@@ -164,19 +257,36 @@ pub fn run() {
         ))
         .plugin(tauri_plugin_opener::init())
         .manage(shared.clone())
-        .invoke_handler(tauri::generate_handler![status, effect_catalog, layouts, apply_effect])
+        .manage(eng.clone())
+        .invoke_handler(tauri::generate_handler![
+            status,
+            effect_catalog,
+            layouts,
+            apply_effect,
+            set_layout,
+            set_visible,
+            engine_preview,
+            engine_start,
+            engine_stop
+        ])
         .setup(move |app| {
             let show = MenuItem::with_id(app, "show", "Prizma'yı aç", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Çıkış", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
+            let (q_state, q_eng) = (shared.clone(), eng.clone());
             TrayIconBuilder::with_id("tray")
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Prizma")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
-                .on_menu_event(|app, ev| match ev.id.as_ref() {
+                .on_menu_event(move |app, ev| match ev.id.as_ref() {
                     "show" => show_main(app),
-                    "quit" => app.exit(0),
+                    "quit" => {
+                        if q_eng.shared.lock().mode == Mode::Live {
+                            let _ = stop_and_restore(&q_state, &q_eng); // never leave the keyboard frozen
+                        }
+                        app.exit(0)
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, ev| {
@@ -188,14 +298,31 @@ pub fn run() {
             if !std::env::args().any(|a| a == "--hidden") {
                 show_main(app.handle());
             }
-            spawn_event_thread(app.handle().clone(), shared.clone());
+            let (h1, h2, h3) = (app.handle().clone(), app.handle().clone(), app.handle().clone());
+            let send_state = shared.clone();
+            eng.spawn(
+                Box::new(move |frame| with_dev(&send_state, |dev| dev.send_perkey(frame)).map_err(anyhow::Error::msg)),
+                Box::new(move |keys| {
+                    let _ = h1.emit("engine-frame", keys);
+                }),
+                Box::new(move |msg| {
+                    let _ = h2.emit("engine-error", msg);
+                }),
+            );
+            spawn_event_thread(h3, shared.clone(), eng.clone());
             Ok(())
         })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
+        .on_window_event(|window, event| match event {
+            WindowEvent::CloseRequested { api, .. } => {
                 api.prevent_close(); // keep running in the tray
                 let _ = window.hide();
+                window.state::<Arc<Engine>>().shared.lock().visible = false;
             }
+            WindowEvent::Focused(_) => {
+                let visible = window.is_visible().unwrap_or(true);
+                window.state::<Arc<Engine>>().shared.lock().visible = visible;
+            }
+            _ => {}
         })
         .run(tauri::generate_context!())
         .expect("error while running Prizma");

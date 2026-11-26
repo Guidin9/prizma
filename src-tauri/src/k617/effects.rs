@@ -77,14 +77,19 @@ fn rec_at(profile: usize, i: usize) -> usize {
 
 /// Read the effect of profile 0 from an EXEC frame (and its palette from MODE).
 pub fn decode(exec: &[u8], mode: &[u8]) -> HwEffect {
-    let id = exec[rec_at(0, 5)];
+    decode_id(exec, mode, exec[rec_at(0, 5)])
+}
+
+/// The settings the keyboard keeps for effect `id` (profile 0), whether or not it is active.
+/// The firmware stores colour, speed, brightness and direction separately for every effect.
+pub fn decode_id(exec: &[u8], mode: &[u8], id: u8) -> HwEffect {
     let pair = 20 + 2 * id as usize;
     let a = exec[rec_at(0, pair)];
     let b = exec[rec_at(0, pair + 1)];
     let ci = (a & 0x0F) as usize;
     let colour = if ci < 7 {
         let o = HDR + id as usize * PAL_ENTRY + ci * 3;
-        Some([mode[o], mode[o + 1], mode[o + 2]])
+        Some(crate::colour::from_led([mode[o], mode[o + 1], mode[o + 2]]))
     } else {
         None
     };
@@ -105,9 +110,15 @@ pub fn encode(exec: &mut [u8], mode: &mut [u8], e: &HwEffect) {
         exec[rec_at(p, pair + 1)] = (speed << 4) | bright;
         if let Some(rgb) = e.colour {
             let o = HDR + p * PAL_PROFILE_STRIDE + id * PAL_ENTRY;
-            mode[o..o + 3].copy_from_slice(&rgb);
+            // the firmware drives the LEDs with these bytes as they are
+            mode[o..o + 3].copy_from_slice(&crate::colour::to_led_u8(rgb));
         }
     }
+}
+
+/// Stored settings of every effect in the catalogue, in catalogue order.
+pub fn decode_all(exec: &[u8], mode: &[u8]) -> Vec<HwEffect> {
+    EFFECTS.iter().map(|e| decode_id(exec, mode, e.id)).collect()
 }
 
 /// True when both profile records carry a valid signature (an invalid record makes the
@@ -142,7 +153,7 @@ mod tests {
     #[test]
     fn roundtrip_and_both_profiles() {
         let (mut exec, mut mode) = blank();
-        let e = HwEffect { id: 0x0B, colour: Some([10, 20, 30]), speed: 4, brightness: 3, reverse: true };
+        let e = HwEffect { id: 0x0B, colour: Some([61, 214, 255]), speed: 4, brightness: 3, reverse: true };
         encode(&mut exec, &mut mode, &e);
         assert_eq!(decode(&exec, &mode), e);
         for p in 0..2 {
@@ -150,7 +161,7 @@ mod tests {
             assert_eq!(exec[rec_at(p, 20 + 22)], 0x80);
             assert_eq!(exec[rec_at(p, 21 + 22)], 0x33);
             let o = HDR + p * PAL_PROFILE_STRIDE + 11 * PAL_ENTRY;
-            assert_eq!(&mode[o..o + 3], &[10, 20, 30]);
+            assert_eq!(&mode[o..o + 3], &crate::colour::to_led_u8([61, 214, 255]));
         }
         assert!(records_valid(&exec));
     }
@@ -165,6 +176,20 @@ mod tests {
         assert_eq!(exec[38], 0x07);
         assert_eq!(exec[39], 0x04);
         assert_eq!(decode(&exec, &mode), e);
+    }
+
+    #[test]
+    fn each_effect_keeps_its_own_settings() {
+        let (mut exec, mut mode) = blank();
+        let a = HwEffect { id: 0x02, colour: Some([0, 255, 0]), speed: 2, brightness: 1, reverse: false };
+        let b = HwEffect { id: 0x03, colour: None, speed: 5, brightness: 4, reverse: true };
+        encode(&mut exec, &mut mode, &a);
+        encode(&mut exec, &mut mode, &b);
+        assert_eq!(decode(&exec, &mode), b);
+        assert_eq!(decode_id(&exec, &mode, 0x02), a);
+        let all = decode_all(&exec, &mode);
+        assert_eq!(all.len(), EFFECTS.len());
+        assert_eq!(all.iter().find(|e| e.id == 0x02), Some(&a));
     }
 
     #[test]

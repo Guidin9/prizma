@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { EffectInfo, HwEffect } from '../api';
-  import { hash, shade, type KeyGeo } from '../preview';
+  import { REACTIVE, hash, shade, simPresses, type KeyGeo } from '../preview';
+  import KeyPressIcon from './KeyPressIcon.svelte';
 
   interface Props {
     info: EffectInfo;
@@ -54,8 +55,9 @@
       const t = live ? now / 1000 : 1.7;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       const e = { ...effect, id: info.id, brightness: 4 };
+      const presses = simPresses(cells, t, 0.35);
       for (const k of cells) {
-        const [r, g, b] = shade(e, k, t);
+        const [r, g, b] = shade(e, k, t, presses);
         const col = k.index % COLS;
         const row = Math.floor(k.index / COLS);
         const x = (col + row * 0.3) * cw + cw * 0.08;
@@ -76,6 +78,7 @@
 <button
   class="tile"
   class:selected
+  aria-label={REACTIVE.has(info.id) ? `${info.name}, tuşa basınca çalışır` : undefined}
   aria-pressed={selected}
   onclick={onpick}
   onmouseenter={() => (hovered = true)}
@@ -84,6 +87,11 @@
   onblur={() => (hovered = false)}
 >
   <canvas bind:this={canvas}></canvas>
+  {#if REACTIVE.has(info.id)}
+    <span class="press" title="Tuşa basınca çalışır; basmazsan klavye karanlık kalır.">
+      <KeyPressIcon size={12} />Tuşa basınca
+    </span>
+  {/if}
   <span class="name">{info.name}</span>
   {#if applied}<span class="dot" title="Klavyede şu an bu efekt var"></span>{/if}
 </button>
@@ -134,6 +142,23 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .press {
+    position: absolute;
+    top: 9px;
+    left: 9px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px 2px 5px;
+    border-radius: 6px;
+    border: 1px solid #ffffff2e;
+    background: #0e0c18d9;
+    color: var(--text);
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    pointer-events: none;
   }
   .dot {
     position: absolute;
