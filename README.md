@@ -17,6 +17,12 @@
   <a href="README.tr.md"><img alt="Türkçe" src="https://img.shields.io/badge/README-T%C3%BCrk%C3%A7e-ff3d6e"></a>
 </p>
 
+<p align="center">
+  <img src="docs/k617-demo.webp" width="560" alt="A Redragon K617 Fizz running Prizma's live effects: fire, a rainbow wave, then an aurora layer with red WASD keys on top" /><br/>
+  <sub>The real keyboard running Prizma's live effects: fire, rainbow wave, and an aurora layer with red WASD on top.<br/>
+  Filmed with a desk webcam, which washes the LEDs out: in person the colours are brighter and the motion smoother.</sub>
+</p>
+
 ![Prizma showing the Redragon K617 Fizz lighting view with the Neon stream effect](docs/screenshot-lighting.png)
 
 Prizma is a small, open-source replacement for the official Redragon K617 software. It talks to the

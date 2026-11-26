@@ -17,6 +17,12 @@
   <a href="README.md"><img alt="English" src="https://img.shields.io/badge/README-English-ff3d6e"></a>
 </p>
 
+<p align="center">
+  <img src="docs/k617-demo.webp" width="560" alt="Prizma'nın canlı efektleriyle çalışan Redragon K617 Fizz: ateş, gökkuşağı dalgası, sonra aurora katmanının üstünde kırmızı WASD" /><br/>
+  <sub>Gerçek klavyede Prizma'nın canlı efektleri: ateş, gökkuşağı dalgası ve aurora üstünde kırmızı WASD katmanı.<br/>
+  Masa üstü web kamerasıyla çekildi; kamera LED'leri soluk gösteriyor. Gerçekte renkler çok daha canlı, hareket daha akıcı.</sub>
+</p>
+
 ![Prizma, Redragon K617 Fizz ışık ekranında Neon akış efekti](docs/screenshot-lighting.png)
 
 Prizma, Redragon K617'nin resmî yazılımına küçük ve açık kaynak bir alternatif. Klavyeyle doğrudan
